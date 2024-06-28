@@ -8,7 +8,7 @@ use data::{File, FileType};
 
 use crate::error::Result;
 
-pub async fn remove_all<S: AsRef<str>>(mut backend: impl FSBackend, paths: &[S]) -> Result<()> {
+pub async fn remove_all<S: AsRef<str>>(backend: &mut dyn FSBackend, paths: &[S]) -> Result<()> {
     let mut dirs_to_process = vec![];
 
     for path in paths {
@@ -49,8 +49,8 @@ pub async fn remove_all<S: AsRef<str>>(mut backend: impl FSBackend, paths: &[S])
 }
 
 pub async fn move_files_between<S: AsRef<str>>(
-    from_backend: impl FSBackend,
-    to_backend: impl FSBackend,
+    from_backend: &mut dyn FSBackend,
+    to_backend: &mut dyn FSBackend,
     from: &[S],
     to: S,
 ) -> Result<()> {
@@ -58,8 +58,8 @@ pub async fn move_files_between<S: AsRef<str>>(
 }
 
 pub async fn copy_files_between<S: AsRef<str>>(
-    from_backend: impl FSBackend,
-    to_backend: impl FSBackend,
+    from_backend: &mut dyn FSBackend,
+    to_backend: &mut dyn FSBackend,
     from: &[S],
     to: S,
 ) -> Result<()> {
@@ -90,8 +90,8 @@ pub async fn move_files_between_with_progress<
     S: AsRef<str>,
     F: FnMut(TransitProgress) -> TransitProgressResponse,
 >(
-    from_backend: impl FSBackend,
-    to_backend: impl FSBackend,
+    from_backend: &mut dyn FSBackend,
+    to_backend: &mut dyn FSBackend,
     from: &[S],
     to: S,
 ) -> Result<()> {
@@ -102,8 +102,8 @@ pub async fn copy_files_between_with_progress<
     S: AsRef<str>,
     F: FnMut(TransitProgress) -> TransitProgressResponse,
 >(
-    from_backend: impl FSBackend,
-    to_backend: impl FSBackend,
+    from_backend: &mut dyn FSBackend,
+    to_backend: &mut dyn FSBackend,
     from: &[S],
     to: S,
 ) -> Result<()> {
