@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use async_trait::async_trait;
 use russh_sftp::client::fs::Metadata as SFTPMetadata;
 use russh_sftp::client::SftpSession;
 use tokio::io::AsyncWriteExt;
@@ -16,75 +17,62 @@ impl SFTPBackend {
     pub fn new(session: SftpSession) -> Self {
         Self { session }
     }
-}
 
-impl FSBackend for SFTPBackend {
-    async fn exists<P: AsRef<Path>>(&mut self, path: P) -> Result<bool> {
-        Ok(self
-            .session
-            .try_exists(path.as_ref().to_str().ok_or(Error::NotUtf8)?)
-            .await?)
+    pub fn inner(&mut self) -> &mut SftpSession {
+        &mut self.session
     }
 
-    async fn get_file_type<P: AsRef<Path>>(&mut self, path: P) -> Result<FileType> {
+    pub fn unwrap(self) -> SftpSession {
+        self.session
+    }
+}
+
+#[async_trait]
+impl FSBackend for SFTPBackend {
+    async fn exists(&mut self, path: &str) -> Result<bool> {
+        Ok(self.session.try_exists(path).await?)
+    }
+
+    async fn get_file_type(&mut self, path: &str) -> Result<FileType> {
         Ok(file_type_from_sftp_metadata(
-            &self
-                .session
-                .metadata(path.as_ref().to_str().ok_or(Error::NotUtf8)?)
-                .await?,
+            &self.session.metadata(path).await?,
         ))
     }
 
-    async fn retrieve_files<P: AsRef<Path>>(&mut self, paths: Vec<P>) -> Result<Vec<File>> {
+    async fn retrieve_files(&mut self, paths: Vec<String>) -> Result<Vec<File>> {
         let mut files = vec![];
 
         for path in paths {
+            let path_std = Path::new(&path);
+
             files.push(File {
-                path: path.as_ref().to_str().ok_or(Error::NotUtf8)?.to_string(),
-                name: path
-                    .as_ref()
+                path: path.clone(),
+                name: path_std
                     .file_name()
                     .ok_or(Error::NoFileName)?
                     .to_str()
-                    .ok_or(Error::NotUtf8)?
+                    .unwrap() // Input paths are already Unicode
                     .to_string(),
-                extension: path
-                    .as_ref()
+                extension: path_std
                     .extension()
-                    .and_then(|os_str| os_str.to_str().and_then(|str| Some(str.to_string()))),
-                metadata: self
-                    .session
-                    .metadata(path.as_ref().to_str().ok_or(Error::NotUtf8)?)
-                    .await?
-                    .into(),
+                    .and_then(|os_str| Some(os_str.to_str().unwrap().to_string())), // Input paths are already Unicode
+                metadata: self.session.metadata(path).await?.into(),
             })
         }
 
         Ok(files)
     }
 
-    async fn retrieve_file_content<P: AsRef<Path>>(&mut self, path: P) -> Result<Vec<u8>> {
-        Ok(self
-            .session
-            .read(path.as_ref().to_str().ok_or(Error::NotUtf8)?)
-            .await?)
+    async fn retrieve_file_content(&mut self, path: &str) -> Result<Vec<u8>> {
+        Ok(self.session.read(path).await?)
     }
 
-    async fn create_file<P: AsRef<Path>>(
-        &mut self,
-        path: P,
-        contents: Option<&[u8]>,
-    ) -> Result<()> {
+    async fn create_file(&mut self, path: &str, contents: Option<&[u8]>) -> Result<()> {
         if self.exists(&path).await? {
-            return Err(Error::AlreadyExists(
-                path.as_ref().to_str().ok_or(Error::NotUtf8)?.to_string(),
-            ));
+            return Err(Error::AlreadyExists(path.to_string()));
         }
 
-        let mut file = self
-            .session
-            .create(path.as_ref().to_str().ok_or(Error::NotUtf8)?)
-            .await?;
+        let mut file = self.session.create(path).await?;
 
         if let Some(contents) = contents {
             file.write_all(contents).await?;
@@ -93,22 +81,18 @@ impl FSBackend for SFTPBackend {
         Ok(())
     }
 
-    async fn create_dir<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
-        self.session
-            .create_dir(path.as_ref().to_str().ok_or(Error::NotUtf8)?)
-            .await?;
+    async fn create_dir(&mut self, path: &str) -> Result<()> {
+        self.session.create_dir(path).await?;
         Ok(())
     }
 
-    async fn read_dir<P: AsRef<Path>>(&mut self, path: P) -> Result<Vec<File>> {
-        let path_str = path.as_ref().to_str().ok_or(Error::NotUtf8)?;
-
+    async fn read_dir(&mut self, path: &str) -> Result<Vec<File>> {
         Ok(self
             .session
-            .read_dir(path_str)
+            .read_dir(path)
             .await?
             .map(|file| {
-                let path = format!("{path_str}/{}", file.file_name());
+                let path = format!("{path}/{}", file.file_name());
                 let extension = Path::new(&path)
                     .extension()
                     .and_then(|os_str| os_str.to_str().and_then(|str| Some(str.to_string())));
@@ -123,21 +107,17 @@ impl FSBackend for SFTPBackend {
             .collect())
     }
 
-    async fn remove_file<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
-        self.session
-            .remove_file(path.as_ref().to_str().ok_or(Error::NotUtf8)?)
-            .await?;
+    async fn remove_file(&mut self, path: &str) -> Result<()> {
+        self.session.remove_file(path).await?;
         Ok(())
     }
 
-    async fn remove_dir<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
-        self.session
-            .remove_dir(path.as_ref().to_str().ok_or(Error::NotUtf8)?)
-            .await?;
+    async fn remove_dir(&mut self, path: &str) -> Result<()> {
+        self.session.remove_dir(path).await?;
         Ok(())
     }
 
-    async fn trash<P: AsRef<Path>>(&mut self, _path: P) -> Result<()> {
+    async fn trash(&mut self, _path: &str) -> Result<()> {
         return Err(Error::Unsupported("trash".into(), "Unsupported".into()));
     }
 }

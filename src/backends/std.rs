@@ -1,6 +1,7 @@
 use std::fs::Metadata as StdMetadata;
 use std::path::Path;
 
+use async_trait::async_trait;
 use tokio::fs;
 
 use crate::data::{File, FileType, Metadata};
@@ -9,34 +10,35 @@ use crate::FSBackend;
 
 pub struct StdBackend;
 
+#[async_trait]
 impl FSBackend for StdBackend {
-    async fn exists<P: AsRef<Path>>(&mut self, path: P) -> Result<bool> {
-        Ok(path.as_ref().exists())
+    async fn exists(&mut self, path: &str) -> Result<bool> {
+        Ok(Path::new(path).exists())
     }
 
-    async fn get_file_type<P: AsRef<Path>>(&mut self, path: P) -> Result<FileType> {
+    async fn get_file_type(&mut self, path: &str) -> Result<FileType> {
         Ok(file_type_from_std_metadata(
             &tokio::fs::metadata(path).await?,
         ))
     }
 
-    async fn retrieve_files<P: AsRef<Path>>(&mut self, paths: Vec<P>) -> Result<Vec<File>> {
+    async fn retrieve_files(&mut self, paths: Vec<String>) -> Result<Vec<File>> {
         let mut files = vec![];
 
         for path in paths {
-            let path = path.as_ref();
+            let std_path = Path::new(&path);
 
             files.push(File {
-                path: path.to_str().ok_or(Error::NotUtf8)?.to_string(),
-                name: path
+                path: path.clone(),
+                name: std_path
                     .file_name()
                     .ok_or(Error::NoFileName)?
                     .to_str()
-                    .ok_or(Error::NotUtf8)?
+                    .unwrap() // Input paths are already Unicode
                     .to_string(),
-                extension: path
+                extension: std_path
                     .extension()
-                    .and_then(|os_str| os_str.to_str().and_then(|str| Some(str.to_string()))),
+                    .and_then(|os_str| Some(os_str.to_str().unwrap().to_string())), // Input paths are already Unicode
                 metadata: tokio::fs::metadata(path).await?.into(),
             });
         }
@@ -44,28 +46,24 @@ impl FSBackend for StdBackend {
         Ok(files)
     }
 
-    async fn retrieve_file_content<P: AsRef<Path>>(&mut self, path: P) -> Result<Vec<u8>> {
+    async fn retrieve_file_content(&mut self, path: &str) -> Result<Vec<u8>> {
         Ok(tokio::fs::read(path).await?)
     }
 
-    async fn create_file<P: AsRef<Path>>(
-        &mut self,
-        path: P,
-        contents: Option<&[u8]>,
-    ) -> Result<()> {
-        tokio::fs::File::create_new(&path).await?;
+    async fn create_file(&mut self, path: &str, contents: Option<&[u8]>) -> Result<()> {
+        tokio::fs::File::create_new(path).await?;
         if let Some(contents) = contents {
-            tokio::fs::write(&path, contents).await?;
+            tokio::fs::write(path, contents).await?;
         }
         Ok(())
     }
 
-    async fn create_dir<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
+    async fn create_dir(&mut self, path: &str) -> Result<()> {
         tokio::fs::create_dir(path).await?;
         Ok(())
     }
 
-    async fn read_dir<P: AsRef<Path>>(&mut self, path: P) -> Result<Vec<File>> {
+    async fn read_dir(&mut self, path: &str) -> Result<Vec<File>> {
         let mut files = vec![];
         let mut result = fs::read_dir(path).await?;
 
@@ -89,18 +87,18 @@ impl FSBackend for StdBackend {
         Ok(files)
     }
 
-    async fn remove_file<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
+    async fn remove_file(&mut self, path: &str) -> Result<()> {
         tokio::fs::remove_file(path).await?;
         Ok(())
     }
 
-    async fn remove_dir<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
+    async fn remove_dir(&mut self, path: &str) -> Result<()> {
         tokio::fs::remove_dir(path).await?;
         Ok(())
     }
 
-    async fn trash<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
-        trash::delete(path)?; // FIXME: This isn't async...
+    async fn trash(&mut self, path: &str) -> Result<()> {
+        trash::delete(path)?; // FIXME: This is sync...
         Ok(())
     }
 }

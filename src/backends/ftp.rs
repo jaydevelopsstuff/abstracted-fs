@@ -1,6 +1,7 @@
 use std::path::Path;
 use std::str::FromStr;
 
+use async_trait::async_trait;
 use suppaftp::AsyncNativeTlsFtpStream;
 
 use crate::data::{File, FileType, Metadata};
@@ -16,29 +17,30 @@ impl FTPBackend {
         Self { stream }
     }
 
+    pub fn inner(&mut self) -> &mut AsyncNativeTlsFtpStream {
+        &mut self.stream
+    }
+
     pub fn unwrap(self) -> AsyncNativeTlsFtpStream {
         self.stream
     }
 }
 
+#[async_trait]
 impl FSBackend for FTPBackend {
-    async fn exists<P: AsRef<Path>>(&mut self, path: P) -> Result<bool> {
+    async fn exists(&mut self, path: &str) -> Result<bool> {
         todo!()
     }
 
-    async fn get_file_type<P: AsRef<Path>>(&mut self, path: P) -> Result<FileType> {
+    async fn get_file_type(&mut self, path: &str) -> Result<FileType> {
         todo!()
     }
 
-    async fn retrieve_files<P: AsRef<Path>>(&mut self, paths: Vec<P>) -> Result<Vec<File>> {
+    async fn retrieve_files(&mut self, paths: Vec<String>) -> Result<Vec<File>> {
         let mut files = vec![];
 
         for path in paths {
-            files.push(
-                self.stream
-                    .mlst(Some(path.as_ref().to_str().ok_or(Error::NotUtf8)?))
-                    .await?,
-            )
+            files.push(self.stream.mlst(Some(&path)).await?)
         }
 
         println!("{:?}", files);
@@ -46,42 +48,32 @@ impl FSBackend for FTPBackend {
         Ok(vec![])
     }
 
-    async fn retrieve_file_content<P: AsRef<Path>>(&mut self, path: P) -> Result<Vec<u8>> {
+    async fn retrieve_file_content(&mut self, path: &str) -> Result<Vec<u8>> {
         todo!()
     }
 
-    async fn create_file<P: AsRef<Path>>(
-        &mut self,
-        path: P,
-        contents: Option<&[u8]>,
-    ) -> Result<()> {
+    async fn create_file(&mut self, path: &str, contents: Option<&[u8]>) -> Result<()> {
         self.stream
-            .put_file(
-                path.as_ref().to_str().ok_or(Error::NotUtf8)?,
-                &mut contents.unwrap_or(&[]),
-            )
+            .put_file(path, &mut contents.unwrap_or(&[]))
             .await?;
 
         Ok(())
     }
 
-    async fn create_dir<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
-        self.stream
-            .mkdir(path.as_ref().to_str().ok_or(Error::NotUtf8)?)
-            .await?;
+    async fn create_dir(&mut self, path: &str) -> Result<()> {
+        self.stream.mkdir(path).await?;
         Ok(())
     }
 
-    async fn read_dir<P: AsRef<Path>>(&mut self, path: P) -> Result<Vec<File>> {
-        let path_str = path.as_ref().to_str().ok_or(Error::NotUtf8)?;
+    async fn read_dir(&mut self, path: &str) -> Result<Vec<File>> {
         Ok(self
             .stream
-            .list(Some(path_str))
+            .list(Some(path))
             .await?
             .into_iter()
             .filter_map(|file_str| suppaftp::list::File::from_str(&file_str).ok())
             .map(|file| {
-                let path = format!("{path_str}/{}", file.name());
+                let path = format!("{path}/{}", file.name());
                 let extension = Path::new(&path)
                     .extension()
                     .and_then(|os_str| os_str.to_str().and_then(|str| Some(str.to_string())));
@@ -108,21 +100,17 @@ impl FSBackend for FTPBackend {
             .collect())
     }
 
-    async fn remove_file<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
-        self.stream
-            .rm(path.as_ref().to_str().ok_or(Error::NotUtf8)?)
-            .await?;
+    async fn remove_file(&mut self, path: &str) -> Result<()> {
+        self.stream.rm(path).await?;
         Ok(())
     }
 
-    async fn remove_dir<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
-        self.stream
-            .rmdir(path.as_ref().to_str().ok_or(Error::NotUtf8)?)
-            .await?;
+    async fn remove_dir(&mut self, path: &str) -> Result<()> {
+        self.stream.rmdir(path).await?;
         Ok(())
     }
 
-    async fn trash<P: AsRef<Path>>(&mut self, _path: P) -> Result<()> {
+    async fn trash(&mut self, _path: &str) -> Result<()> {
         Err(Error::Unsupported("trash".into(), "FTP".into()))
     }
 }
