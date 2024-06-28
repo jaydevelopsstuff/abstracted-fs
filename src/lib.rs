@@ -1,79 +1,52 @@
 pub mod backends;
+pub mod data;
 pub mod error;
+pub mod unix;
 
-use std::{path::Path, time::SystemTime};
+use std::path::Path;
+
+use data::{File, FileType};
 
 use crate::error::Result;
 
 pub trait FSBackend {
-    async fn is_file<P: AsRef<Path>>(&self, path: P) -> Result<bool>;
-    async fn is_dir<P: AsRef<Path>>(&self, path: P) -> Result<bool>;
-    async fn is_symlink<P: AsRef<Path>>(&self, path: P) -> Result<bool>;
-    async fn get_metadata<P: AsRef<Path>>(&self, paths: Vec<P>) -> Result<Vec<File>>;
-    async fn get_file_content<P: AsRef<Path>>(&self, path: P) -> Result<Vec<u8>>;
-    async fn create_file<P: AsRef<Path>>(&self, path: P, contents: Option<&[u8]>) -> Result<()>;
-    async fn create_dir<P: AsRef<Path>>(&self, path: P) -> Result<()>;
-    async fn read_dir<P: AsRef<Path>>(&self, path: P) -> Result<Vec<File>>;
-    async fn remove_file<P: AsRef<Path>>(&self, path: P) -> Result<()>;
-    async fn remove_dir<P: AsRef<Path>>(&self, path: P) -> Result<()>;
-    async fn trash<P: AsRef<Path>>(&self, path: P) -> Result<()>;
-}
-
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
-pub struct File {
-    pub path: String,
-    pub name: String,
-    pub extension: Option<String>,
-    pub metadata: Metadata,
-}
-
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
-pub struct Metadata {
-    pub r#type: FileType,
-    pub modified: Option<SystemTime>,
-    pub accessed: Option<SystemTime>,
-    pub created: Option<SystemTime>,
-    pub size: Option<u64>,
-    pub readonly: bool,
-    pub unix_mode: Option<u32>,
-}
-
-#[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub enum FileType {
-    File,
-    Dir,
-    Symlink,
-    Socket,
-    Fifo,
-    CharDevice,
-    BlockDevice,
-    Unknown,
-}
-
-impl FileType {
-    fn from_bools(is_file: bool, is_dir: bool, is_symlink: bool) -> Self {
-        Self::from_complex_bools((is_file, is_dir, is_symlink, false, false, false, false))
-    }
-
-    fn from_complex_bools(bools: (bool, bool, bool, bool, bool, bool, bool)) -> Self {
-        match bools {
-            (true, false, false, false, false, false, false) => Self::File,
-            (false, true, false, false, false, false, false) => Self::Dir,
-            (false, false, true, false, false, false, false) => Self::Symlink,
-            (false, false, false, true, false, false, false) => Self::Socket,
-            (false, false, false, false, true, false, false) => Self::Fifo,
-            (false, false, false, false, false, true, false) => Self::CharDevice,
-            (false, false, false, false, false, false, true) => Self::BlockDevice,
-            _ => Self::Unknown,
-        }
-    }
+    async fn exists<P: AsRef<Path>>(&mut self, path: P) -> Result<bool>;
+    async fn get_file_type<P: AsRef<Path>>(&mut self, path: P) -> Result<FileType>;
+    async fn retrieve_files<P: AsRef<Path>>(&mut self, paths: Vec<P>) -> Result<Vec<File>>;
+    async fn retrieve_file_content<P: AsRef<Path>>(&mut self, path: P) -> Result<Vec<u8>>;
+    async fn create_file<P: AsRef<Path>>(&mut self, path: P, contents: Option<&[u8]>)
+        -> Result<()>;
+    async fn create_dir<P: AsRef<Path>>(&mut self, path: P) -> Result<()>;
+    async fn read_dir<P: AsRef<Path>>(&mut self, path: P) -> Result<Vec<File>>;
+    async fn remove_file<P: AsRef<Path>>(&mut self, path: P) -> Result<()>;
+    async fn remove_dir<P: AsRef<Path>>(&mut self, path: P) -> Result<()>;
+    async fn trash<P: AsRef<Path>>(&mut self, path: P) -> Result<()>;
 }
 
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use crate::{backends::ftp::FTPBackend, FSBackend};
+    use suppaftp::AsyncNativeTlsFtpStream;
+
+    #[tokio::test]
+    async fn ftp() {
+        let mut ftp_stream = AsyncNativeTlsFtpStream::connect("ftp.dlptest.com:21")
+            .await
+            .expect("Failed to connect to FTP test server");
+
+        ftp_stream
+            .login("dlpuser", "rNrKYTX9g7z3RgJRmxWuGHbeu")
+            .await
+            .expect("Failed to login to FTP server");
+
+        let mut backend = FTPBackend::new(ftp_stream);
+
+        let read_results = backend.read_dir("/").await.expect("Failed to read dir");
+
+        backend
+            .unwrap()
+            .quit()
+            .await
+            .expect("Failed to gracefully disconnect from FTP server");
+    }
+}

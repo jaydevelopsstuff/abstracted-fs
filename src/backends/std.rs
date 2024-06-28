@@ -1,28 +1,26 @@
 use std::fs::Metadata as StdMetadata;
-use std::os::unix::fs::FileTypeExt;
 use std::path::Path;
 
 use tokio::fs;
 
+use crate::data::{File, FileType, Metadata};
 use crate::error::{Error, Result};
-use crate::{FSBackend, File, FileType, Metadata};
+use crate::FSBackend;
 
 pub struct StdBackend;
 
 impl FSBackend for StdBackend {
-    async fn is_file<P: AsRef<Path>>(&self, path: P) -> Result<bool> {
-        Ok(path.as_ref().is_file())
+    async fn exists<P: AsRef<Path>>(&mut self, path: P) -> Result<bool> {
+        Ok(path.as_ref().exists())
     }
 
-    async fn is_dir<P: AsRef<Path>>(&self, path: P) -> Result<bool> {
-        Ok(path.as_ref().is_dir())
+    async fn get_file_type<P: AsRef<Path>>(&mut self, path: P) -> Result<FileType> {
+        Ok(file_type_from_std_metadata(
+            &tokio::fs::metadata(path).await?,
+        ))
     }
 
-    async fn is_symlink<P: AsRef<Path>>(&self, path: P) -> Result<bool> {
-        Ok(path.as_ref().is_symlink())
-    }
-
-    async fn get_metadata<P: AsRef<Path>>(&self, paths: Vec<P>) -> Result<Vec<File>> {
+    async fn retrieve_files<P: AsRef<Path>>(&mut self, paths: Vec<P>) -> Result<Vec<File>> {
         let mut files = vec![];
 
         for path in paths {
@@ -46,11 +44,15 @@ impl FSBackend for StdBackend {
         Ok(files)
     }
 
-    async fn get_file_content<P: AsRef<Path>>(&self, path: P) -> Result<Vec<u8>> {
+    async fn retrieve_file_content<P: AsRef<Path>>(&mut self, path: P) -> Result<Vec<u8>> {
         Ok(tokio::fs::read(path).await?)
     }
 
-    async fn create_file<P: AsRef<Path>>(&self, path: P, contents: Option<&[u8]>) -> Result<()> {
+    async fn create_file<P: AsRef<Path>>(
+        &mut self,
+        path: P,
+        contents: Option<&[u8]>,
+    ) -> Result<()> {
         tokio::fs::File::create_new(&path).await?;
         if let Some(contents) = contents {
             tokio::fs::write(&path, contents).await?;
@@ -58,12 +60,12 @@ impl FSBackend for StdBackend {
         Ok(())
     }
 
-    async fn create_dir<P: AsRef<Path>>(&self, path: P) -> Result<()> {
+    async fn create_dir<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
         tokio::fs::create_dir(path).await?;
         Ok(())
     }
 
-    async fn read_dir<P: AsRef<Path>>(&self, path: P) -> Result<Vec<File>> {
+    async fn read_dir<P: AsRef<Path>>(&mut self, path: P) -> Result<Vec<File>> {
         let mut files = vec![];
         let mut result = fs::read_dir(path).await?;
 
@@ -87,18 +89,19 @@ impl FSBackend for StdBackend {
         Ok(files)
     }
 
-    async fn remove_file<P: AsRef<Path>>(&self, path: P) -> Result<()> {
+    async fn remove_file<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
         tokio::fs::remove_file(path).await?;
         Ok(())
     }
 
-    async fn remove_dir<P: AsRef<Path>>(&self, path: P) -> Result<()> {
+    async fn remove_dir<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
         tokio::fs::remove_dir(path).await?;
         Ok(())
     }
 
-    async fn trash<P: AsRef<Path>>(&self, path: P) -> Result<()> {
-        todo!()
+    async fn trash<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
+        trash::delete(path)?; // FIXME: This isn't async...
+        Ok(())
     }
 }
 
@@ -118,34 +121,41 @@ impl From<StdMetadata> for Metadata {
         let size = None;
 
         Metadata {
-            r#type: if cfg!(unix) {
-                // FIXME: Should we extract all these file_type() calls into a variable?
-                FileType::from_complex_bools((
-                    std_metadata.is_file(),
-                    std_metadata.is_dir(),
-                    std_metadata.is_symlink(),
-                    std_metadata.file_type().is_socket(),
-                    std_metadata.file_type().is_fifo(),
-                    std_metadata.file_type().is_char_device(),
-                    std_metadata.file_type().is_block_device(),
-                ))
-            } else {
-                FileType::from_bools(
-                    std_metadata.is_file(),
-                    std_metadata.is_dir(),
-                    std_metadata.is_symlink(),
-                )
-            },
+            r#type: file_type_from_std_metadata(&std_metadata),
             size,
             modified: std_metadata.modified().ok(),
             accessed: std_metadata.accessed().ok(),
             created: std_metadata.created().ok(),
             readonly: std_metadata.permissions().readonly(),
-            unix_mode: if cfg!(unix) {
-                Some(std_metadata.mode())
+            unix_file_permissions: if cfg!(unix) {
+                Some(std_metadata.mode().into())
             } else {
                 None
             },
         }
+    }
+}
+
+fn file_type_from_std_metadata(std_metadata: &StdMetadata) -> FileType {
+    #[cfg(unix)]
+    use std::os::unix::fs::FileTypeExt;
+
+    if cfg!(unix) {
+        // FIXME: Should we extract all these file_type() calls into a variable?
+        FileType::from_complex_bools((
+            std_metadata.is_file(),
+            std_metadata.is_dir(),
+            std_metadata.is_symlink(),
+            std_metadata.file_type().is_socket(),
+            std_metadata.file_type().is_fifo(),
+            std_metadata.file_type().is_char_device(),
+            std_metadata.file_type().is_block_device(),
+        ))
+    } else {
+        FileType::from_bools(
+            std_metadata.is_file(),
+            std_metadata.is_dir(),
+            std_metadata.is_symlink(),
+        )
     }
 }
