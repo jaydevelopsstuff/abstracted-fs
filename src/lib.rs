@@ -8,24 +8,44 @@ use data::{File, FileType};
 
 use crate::error::Result;
 
-#[derive(Debug, Clone)]
-pub struct TransitProgress {
-    pub processed_bytes: u64,
-    pub total_bytes: u64,
-    pub processed_files: u64,
-    pub total_files: u64,
-}
+pub async fn remove_all<S: AsRef<str>>(mut backend: impl FSBackend, paths: &[S]) -> Result<()> {
+    let mut dirs_to_process = vec![];
 
-#[derive(Debug, Clone)]
-pub enum TransitState {
-    Normal,
-    Exists,
-}
+    for path in paths {
+        if backend.get_file_type(path.as_ref()).await? == FileType::Dir {
+            dirs_to_process.push(path.as_ref().to_string());
+        } else {
+            backend.remove_file(path.as_ref()).await?;
+        }
+    }
 
-#[derive(Debug, Clone)]
-pub enum TransitProgressResponse {
-    ContinueOrAbort,
-    Abort,
+    while !dirs_to_process.is_empty() {
+        let mut new_dirs_to_process = vec![];
+
+        for dir in dirs_to_process {
+            let results = backend.read_dir(&dir).await?;
+            let results_len = results.len();
+
+            let mut files_removed = 0;
+            for file in results {
+                if file.metadata.r#type == FileType::Dir {
+                    new_dirs_to_process.push(file.path);
+                } else {
+                    backend.remove_file(&file.path).await?;
+                    files_removed += 1;
+                }
+            }
+
+            // If this directory has been emptied (or was empty to begin with), then delete it
+            if files_removed == results_len {
+                backend.remove_dir(&dir).await?;
+            }
+        }
+
+        dirs_to_process = new_dirs_to_process;
+    }
+
+    Ok(())
 }
 
 pub async fn move_files_between<S: AsRef<str>>(
@@ -44,6 +64,26 @@ pub async fn copy_files_between<S: AsRef<str>>(
     to: S,
 ) -> Result<()> {
     todo!()
+}
+
+#[derive(Debug, Clone)]
+pub struct TransitProgress {
+    pub processed_bytes: u64,
+    pub total_bytes: u64,
+    pub processed_files: u64,
+    pub total_files: u64,
+}
+
+#[derive(Debug, Clone)]
+pub enum TransitState {
+    Normal,
+    Exists,
+}
+
+#[derive(Debug, Clone)]
+pub enum TransitProgressResponse {
+    ContinueOrAbort,
+    Abort,
 }
 
 pub async fn move_files_between_with_progress<
