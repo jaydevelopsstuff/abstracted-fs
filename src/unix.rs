@@ -1,3 +1,6 @@
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 const OWNER_READ: u32 = 0o400;
 const OWNER_WRITE: u32 = 0o200;
 const OWNER_EXEC: u32 = 0o100;

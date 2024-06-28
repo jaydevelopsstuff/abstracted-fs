@@ -1,3 +1,5 @@
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 
 use crate::unix::UnixFilePermissions;
