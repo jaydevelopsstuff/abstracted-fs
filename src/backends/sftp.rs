@@ -117,7 +117,7 @@ impl FSBackend for SFTPBackend {
         Ok(())
     }
 
-    async fn trash(&mut self, _path: &str) -> Result<()> {
+    async fn trash(&mut self, _paths: &[&str]) -> Result<()> {
         return Err(Error::Unsupported("trash".into(), "Unsupported".into()));
     }
 }

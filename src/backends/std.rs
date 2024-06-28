@@ -97,8 +97,8 @@ impl FSBackend for StdBackend {
         Ok(())
     }
 
-    async fn trash(&mut self, path: &str) -> Result<()> {
-        trash::delete(path)?; // FIXME: This is sync...
+    async fn trash(&mut self, paths: &[&str]) -> Result<()> {
+        trash::delete_all(paths)?; // FIXME: This is sync...
         Ok(())
     }
 }

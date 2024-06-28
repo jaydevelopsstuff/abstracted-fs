@@ -81,7 +81,7 @@ pub trait FSBackend {
     async fn read_dir(&mut self, path: &str) -> Result<Vec<File>>;
     async fn remove_file(&mut self, path: &str) -> Result<()>;
     async fn remove_dir(&mut self, path: &str) -> Result<()>;
-    async fn trash(&mut self, path: &str) -> Result<()>;
+    async fn trash(&mut self, paths: &[&str]) -> Result<()>;
 }
 
 #[cfg(test)]
