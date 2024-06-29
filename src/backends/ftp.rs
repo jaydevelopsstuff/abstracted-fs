@@ -102,7 +102,7 @@ impl FSBackend for FTPBackend {
                         created: None,
                         size: Some(file.size() as u64),
                         readonly: false, // FIXME: Assumption
-                        unix_file_permissions: None,
+                        unix_permissions: None,
                     },
                 }
             })

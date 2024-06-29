@@ -147,7 +147,7 @@ impl From<StdMetadata> for Metadata {
             accessed: std_metadata.accessed().ok(),
             created: std_metadata.created().ok(),
             readonly: std_metadata.permissions().readonly(),
-            unix_file_permissions: if cfg!(unix) {
+            unix_permissions: if cfg!(unix) {
                 Some(std_metadata.mode().into())
             } else {
                 None

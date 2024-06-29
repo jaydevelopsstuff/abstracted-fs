@@ -149,7 +149,7 @@ impl From<SFTPMetadata> for Metadata {
             created: None,
             size: sftp_metadata.size,
             readonly: false, // FIXME: Assumption
-            unix_file_permissions: sftp_metadata
+            unix_permissions: sftp_metadata
                 .permissions
                 .and_then(|permission_bits| Some(permission_bits.into())),
         }

@@ -24,7 +24,7 @@ pub struct Metadata {
     pub created: Option<SystemTime>,
     pub size: Option<u64>,
     pub readonly: bool,
-    pub unix_file_permissions: Option<UnixFilePermissions>,
+    pub unix_permissions: Option<UnixFilePermissions>,
 }
 
 #[non_exhaustive]
