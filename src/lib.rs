@@ -8,7 +8,11 @@ use data::{File, FileType};
 
 use crate::error::Result;
 
-pub async fn remove_all<S: AsRef<str>>(backend: &mut dyn FSBackend, paths: &[S]) -> Result<()> {
+pub async fn remove_all<B: AsMut<dyn FSBackend>, S: AsRef<str>>(
+    mut backend: B,
+    paths: &[S],
+) -> Result<()> {
+    let backend = backend.as_mut();
     let mut dirs_to_process = vec![];
 
     for path in paths {
