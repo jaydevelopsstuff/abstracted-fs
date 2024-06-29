@@ -29,17 +29,17 @@ impl SFTPBackend {
 
 #[async_trait]
 impl FSBackend for SFTPBackend {
-    async fn exists(&mut self, path: &str) -> Result<bool> {
+    async fn exists(&self, path: &str) -> Result<bool> {
         Ok(self.session.try_exists(path).await?)
     }
 
-    async fn get_file_type(&mut self, path: &str) -> Result<FileType> {
+    async fn get_file_type(&self, path: &str) -> Result<FileType> {
         Ok(file_type_from_sftp_metadata(
             &self.session.metadata(path).await?,
         ))
     }
 
-    async fn retrieve_files(&mut self, paths: Vec<String>) -> Result<Vec<File>> {
+    async fn retrieve_files(&self, paths: Vec<String>) -> Result<Vec<File>> {
         let mut files = vec![];
 
         for path in paths {
@@ -63,11 +63,11 @@ impl FSBackend for SFTPBackend {
         Ok(files)
     }
 
-    async fn retrieve_file_content(&mut self, path: &str) -> Result<Vec<u8>> {
+    async fn retrieve_file_content(&self, path: &str) -> Result<Vec<u8>> {
         Ok(self.session.read(path).await?)
     }
 
-    async fn create_file(&mut self, path: &str, contents: Option<&[u8]>) -> Result<()> {
+    async fn create_file(&self, path: &str, contents: Option<&[u8]>) -> Result<()> {
         if self.exists(&path).await? {
             return Err(Error::AlreadyExists(path.to_string()));
         }
@@ -81,12 +81,12 @@ impl FSBackend for SFTPBackend {
         Ok(())
     }
 
-    async fn create_dir(&mut self, path: &str) -> Result<()> {
+    async fn create_dir(&self, path: &str) -> Result<()> {
         self.session.create_dir(path).await?;
         Ok(())
     }
 
-    async fn read_dir(&mut self, path: &str) -> Result<Vec<File>> {
+    async fn read_dir(&self, path: &str) -> Result<Vec<File>> {
         Ok(self
             .session
             .read_dir(path)
@@ -107,17 +107,17 @@ impl FSBackend for SFTPBackend {
             .collect())
     }
 
-    async fn remove_file(&mut self, path: &str) -> Result<()> {
+    async fn remove_file(&self, path: &str) -> Result<()> {
         self.session.remove_file(path).await?;
         Ok(())
     }
 
-    async fn remove_dir(&mut self, path: &str) -> Result<()> {
+    async fn remove_dir(&self, path: &str) -> Result<()> {
         self.session.remove_dir(path).await?;
         Ok(())
     }
 
-    async fn trash(&mut self, _paths: &[&str]) -> Result<()> {
+    async fn trash(&self, _paths: &[&str]) -> Result<()> {
         return Err(Error::Unsupported("trash".into(), "Unsupported".into()));
     }
 }

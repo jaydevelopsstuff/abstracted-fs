@@ -10,7 +10,7 @@ use data::{File, FileType};
 
 use crate::error::Result;
 
-pub async fn remove_all<S: AsRef<str>>(backend: &mut dyn FSBackend, paths: &[S]) -> Result<()> {
+pub async fn remove_all<S: AsRef<str>>(backend: &dyn FSBackend, paths: &[S]) -> Result<()> {
     let mut dirs_to_process = vec![];
 
     for path in paths {
@@ -51,8 +51,8 @@ pub async fn remove_all<S: AsRef<str>>(backend: &mut dyn FSBackend, paths: &[S])
 }
 
 pub async fn move_files_between<S: AsRef<str>>(
-    from_backend: &mut dyn FSBackend,
-    to_backend: &mut dyn FSBackend,
+    from_backend: &dyn FSBackend,
+    to_backend: &dyn FSBackend,
     from: &[S],
     to: S,
 ) -> Result<()> {
@@ -60,8 +60,8 @@ pub async fn move_files_between<S: AsRef<str>>(
 }
 
 pub async fn copy_files_between<S: AsRef<str>>(
-    from_backend: &mut dyn FSBackend,
-    to_backend: &mut dyn FSBackend,
+    from_backend: &dyn FSBackend,
+    to_backend: &dyn FSBackend,
     from: &[S],
     to: S,
 ) -> Result<()> {
@@ -92,8 +92,8 @@ pub async fn move_files_between_with_progress<
     S: AsRef<str>,
     F: FnMut(TransitProgress) -> TransitProgressResponse,
 >(
-    from_backend: &mut dyn FSBackend,
-    to_backend: &mut dyn FSBackend,
+    from_backend: &dyn FSBackend,
+    to_backend: &dyn FSBackend,
     from: &[S],
     to: S,
 ) -> Result<()> {
@@ -104,8 +104,8 @@ pub async fn copy_files_between_with_progress<
     S: AsRef<str>,
     F: FnMut(TransitProgress) -> TransitProgressResponse,
 >(
-    from_backend: &mut dyn FSBackend,
-    to_backend: &mut dyn FSBackend,
+    from_backend: &dyn FSBackend,
+    to_backend: &dyn FSBackend,
     from: &[S],
     to: S,
 ) -> Result<()> {
@@ -114,16 +114,16 @@ pub async fn copy_files_between_with_progress<
 
 #[async_trait]
 pub trait FSBackend: Send + Sync {
-    async fn exists(&mut self, path: &str) -> Result<bool>;
-    async fn get_file_type(&mut self, path: &str) -> Result<FileType>;
-    async fn retrieve_files(&mut self, paths: Vec<String>) -> Result<Vec<File>>;
-    async fn retrieve_file_content(&mut self, path: &str) -> Result<Vec<u8>>;
-    async fn create_file(&mut self, path: &str, contents: Option<&[u8]>) -> Result<()>;
-    async fn create_dir(&mut self, path: &str) -> Result<()>;
-    async fn read_dir(&mut self, path: &str) -> Result<Vec<File>>;
-    async fn remove_file(&mut self, path: &str) -> Result<()>;
-    async fn remove_dir(&mut self, path: &str) -> Result<()>;
-    async fn trash(&mut self, paths: &[&str]) -> Result<()>;
+    async fn exists(&self, path: &str) -> Result<bool>;
+    async fn get_file_type(&self, path: &str) -> Result<FileType>;
+    async fn retrieve_files(&self, paths: Vec<String>) -> Result<Vec<File>>;
+    async fn retrieve_file_content(&self, path: &str) -> Result<Vec<u8>>;
+    async fn create_file(&self, path: &str, contents: Option<&[u8]>) -> Result<()>;
+    async fn create_dir(&self, path: &str) -> Result<()>;
+    async fn read_dir(&self, path: &str) -> Result<Vec<File>>;
+    async fn remove_file(&self, path: &str) -> Result<()>;
+    async fn remove_dir(&self, path: &str) -> Result<()>;
+    async fn trash(&self, paths: &[&str]) -> Result<()>;
 }
 
 #[cfg(test)]

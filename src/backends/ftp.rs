@@ -3,44 +3,48 @@ use std::str::FromStr;
 
 use async_trait::async_trait;
 use suppaftp::AsyncNativeTlsFtpStream;
+use tokio::sync::Mutex;
 
 use crate::data::{File, FileType, Metadata};
 use crate::error::{Error, Result};
 use crate::FSBackend;
 
 pub struct FTPBackend {
-    pub stream: AsyncNativeTlsFtpStream,
+    pub stream: Mutex<AsyncNativeTlsFtpStream>,
 }
 
 impl FTPBackend {
     pub fn new(stream: AsyncNativeTlsFtpStream) -> Self {
-        Self { stream }
+        Self {
+            stream: Mutex::new(stream),
+        }
     }
 
     pub fn inner(&mut self) -> &mut AsyncNativeTlsFtpStream {
-        &mut self.stream
+        self.stream.get_mut()
     }
 
     pub fn unwrap(self) -> AsyncNativeTlsFtpStream {
-        self.stream
+        self.stream.into_inner()
     }
 }
 
 #[async_trait]
 impl FSBackend for FTPBackend {
-    async fn exists(&mut self, path: &str) -> Result<bool> {
+    async fn exists(&self, path: &str) -> Result<bool> {
         todo!()
     }
 
-    async fn get_file_type(&mut self, path: &str) -> Result<FileType> {
+    async fn get_file_type(&self, path: &str) -> Result<FileType> {
         todo!()
     }
 
-    async fn retrieve_files(&mut self, paths: Vec<String>) -> Result<Vec<File>> {
+    async fn retrieve_files(&self, paths: Vec<String>) -> Result<Vec<File>> {
+        let mut stream = self.stream.lock().await;
         let mut files = vec![];
 
         for path in paths {
-            files.push(self.stream.mlst(Some(&path)).await?)
+            files.push(stream.mlst(Some(&path)).await?)
         }
 
         println!("{:?}", files);
@@ -48,26 +52,30 @@ impl FSBackend for FTPBackend {
         Ok(vec![])
     }
 
-    async fn retrieve_file_content(&mut self, path: &str) -> Result<Vec<u8>> {
+    async fn retrieve_file_content(&self, path: &str) -> Result<Vec<u8>> {
         todo!()
     }
 
-    async fn create_file(&mut self, path: &str, contents: Option<&[u8]>) -> Result<()> {
+    async fn create_file(&self, path: &str, contents: Option<&[u8]>) -> Result<()> {
         self.stream
+            .lock()
+            .await
             .put_file(path, &mut contents.unwrap_or(&[]))
             .await?;
 
         Ok(())
     }
 
-    async fn create_dir(&mut self, path: &str) -> Result<()> {
-        self.stream.mkdir(path).await?;
+    async fn create_dir(&self, path: &str) -> Result<()> {
+        self.stream.lock().await.mkdir(path).await?;
         Ok(())
     }
 
-    async fn read_dir(&mut self, path: &str) -> Result<Vec<File>> {
+    async fn read_dir(&self, path: &str) -> Result<Vec<File>> {
         Ok(self
             .stream
+            .lock()
+            .await
             .list(Some(path))
             .await?
             .into_iter()
@@ -100,17 +108,17 @@ impl FSBackend for FTPBackend {
             .collect())
     }
 
-    async fn remove_file(&mut self, path: &str) -> Result<()> {
-        self.stream.rm(path).await?;
+    async fn remove_file(&self, path: &str) -> Result<()> {
+        self.stream.lock().await.rm(path).await?;
         Ok(())
     }
 
-    async fn remove_dir(&mut self, path: &str) -> Result<()> {
-        self.stream.rmdir(path).await?;
+    async fn remove_dir(&self, path: &str) -> Result<()> {
+        self.stream.lock().await.rmdir(path).await?;
         Ok(())
     }
 
-    async fn trash(&mut self, _paths: &[&str]) -> Result<()> {
+    async fn trash(&self, _paths: &[&str]) -> Result<()> {
         Err(Error::Unsupported("trash".into(), "FTP".into()))
     }
 }

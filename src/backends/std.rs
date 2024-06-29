@@ -12,17 +12,17 @@ pub struct StdBackend;
 
 #[async_trait]
 impl FSBackend for StdBackend {
-    async fn exists(&mut self, path: &str) -> Result<bool> {
+    async fn exists(&self, path: &str) -> Result<bool> {
         Ok(Path::new(path).exists())
     }
 
-    async fn get_file_type(&mut self, path: &str) -> Result<FileType> {
+    async fn get_file_type(&self, path: &str) -> Result<FileType> {
         Ok(file_type_from_std_metadata(
             &tokio::fs::metadata(path).await?,
         ))
     }
 
-    async fn retrieve_files(&mut self, paths: Vec<String>) -> Result<Vec<File>> {
+    async fn retrieve_files(&self, paths: Vec<String>) -> Result<Vec<File>> {
         let mut files = vec![];
 
         for path in paths {
@@ -46,11 +46,11 @@ impl FSBackend for StdBackend {
         Ok(files)
     }
 
-    async fn retrieve_file_content(&mut self, path: &str) -> Result<Vec<u8>> {
+    async fn retrieve_file_content(&self, path: &str) -> Result<Vec<u8>> {
         Ok(tokio::fs::read(path).await?)
     }
 
-    async fn create_file(&mut self, path: &str, contents: Option<&[u8]>) -> Result<()> {
+    async fn create_file(&self, path: &str, contents: Option<&[u8]>) -> Result<()> {
         tokio::fs::File::create_new(path).await?;
         if let Some(contents) = contents {
             tokio::fs::write(path, contents).await?;
@@ -58,12 +58,12 @@ impl FSBackend for StdBackend {
         Ok(())
     }
 
-    async fn create_dir(&mut self, path: &str) -> Result<()> {
+    async fn create_dir(&self, path: &str) -> Result<()> {
         tokio::fs::create_dir(path).await?;
         Ok(())
     }
 
-    async fn read_dir(&mut self, path: &str) -> Result<Vec<File>> {
+    async fn read_dir(&self, path: &str) -> Result<Vec<File>> {
         let mut files = vec![];
         let mut result = fs::read_dir(path).await?;
 
@@ -87,17 +87,17 @@ impl FSBackend for StdBackend {
         Ok(files)
     }
 
-    async fn remove_file(&mut self, path: &str) -> Result<()> {
+    async fn remove_file(&self, path: &str) -> Result<()> {
         tokio::fs::remove_file(path).await?;
         Ok(())
     }
 
-    async fn remove_dir(&mut self, path: &str) -> Result<()> {
+    async fn remove_dir(&self, path: &str) -> Result<()> {
         tokio::fs::remove_dir(path).await?;
         Ok(())
     }
 
-    async fn trash(&mut self, paths: &[&str]) -> Result<()> {
+    async fn trash(&self, paths: &[&str]) -> Result<()> {
         trash::delete_all(paths)?; // FIXME: This is sync...
         Ok(())
     }
