@@ -117,7 +117,7 @@ pub async fn copy_files_between_with_progress<
 }
 
 #[async_trait]
-pub trait FSBackend {
+pub trait FSBackend: Send + Sync {
     async fn exists(&mut self, path: &str) -> Result<bool>;
     async fn get_file_type(&mut self, path: &str) -> Result<FileType>;
     async fn retrieve_files(&mut self, paths: Vec<String>) -> Result<Vec<File>>;
