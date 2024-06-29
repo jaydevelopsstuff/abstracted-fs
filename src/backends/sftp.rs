@@ -7,6 +7,7 @@ use tokio::io::AsyncWriteExt;
 
 use crate::data::{File, FileType, Metadata};
 use crate::error::{Error, Result};
+use crate::unix::{UnixFilePermissionFlags, UnixFilePermissions};
 use crate::FSBackend;
 
 pub struct SFTPBackend {
@@ -118,7 +119,24 @@ impl FSBackend for SFTPBackend {
     }
 
     async fn trash(&self, _paths: &[&str]) -> Result<()> {
-        return Err(Error::Unsupported("trash".into(), "Unsupported".into()));
+        return Err(Error::Unsupported("trash".into(), "SFTP".into()));
+    }
+
+    async fn set_file_permissions_unix(
+        &self,
+        path: &str,
+        permissions: UnixFilePermissions,
+    ) -> Result<()> {
+        self.session
+            .set_metadata(
+                path,
+                russh_sftp::protocol::FileAttributes {
+                    permissions: Some(permissions.into()),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        Ok(())
     }
 }
 

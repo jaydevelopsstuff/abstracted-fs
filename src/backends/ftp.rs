@@ -7,6 +7,7 @@ use tokio::sync::Mutex;
 
 use crate::data::{File, FileType, Metadata};
 use crate::error::{Error, Result};
+use crate::unix::UnixFilePermissions;
 use crate::FSBackend;
 
 pub struct FTPBackend {
@@ -120,5 +121,16 @@ impl FSBackend for FTPBackend {
 
     async fn trash(&self, _paths: &[&str]) -> Result<()> {
         Err(Error::Unsupported("trash".into(), "FTP".into()))
+    }
+
+    async fn set_file_permissions_unix(
+        &self,
+        _path: &str,
+        _permissions: UnixFilePermissions,
+    ) -> Result<()> {
+        Err(Error::Unsupported(
+            "set_file_permissions_unix".into(),
+            "FTP".into(),
+        ))
     }
 }

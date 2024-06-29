@@ -1,4 +1,5 @@
 use std::fs::Metadata as StdMetadata;
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
 use async_trait::async_trait;
@@ -6,6 +7,7 @@ use tokio::fs;
 
 use crate::data::{File, FileType, Metadata};
 use crate::error::{Error, Result};
+use crate::unix::{UnixFilePermissionFlags, UnixFilePermissions};
 use crate::FSBackend;
 
 pub struct StdBackend;
@@ -100,6 +102,26 @@ impl FSBackend for StdBackend {
     async fn trash(&self, paths: &[&str]) -> Result<()> {
         trash::delete_all(paths)?; // FIXME: This is sync...
         Ok(())
+    }
+
+    async fn set_file_permissions_unix(
+        &self,
+        path: &str,
+        permissions: UnixFilePermissions,
+    ) -> Result<()> {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(permissions.into()))
+                .await?;
+            Ok(())
+        }
+
+        #[cfg(not(unix))]
+        Err(Error::Unsupported(
+            "set_file_permissions_unix".into(),
+            "STD (Not Unix)".into(),
+        ))
     }
 }
 
