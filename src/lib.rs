@@ -3,16 +3,18 @@ pub mod data;
 pub mod error;
 pub mod unix;
 
+use std::ops::DerefMut;
+
 use async_trait::async_trait;
 use data::{File, FileType};
 
 use crate::error::Result;
 
-pub async fn remove_all<B: AsMut<dyn FSBackend>, S: AsRef<str>>(
+pub async fn remove_all<B: DerefMut<Target = dyn FSBackend>, S: AsRef<str>>(
     mut backend: B,
     paths: &[S],
 ) -> Result<()> {
-    let backend = backend.as_mut();
+    let backend = backend.deref_mut();
     let mut dirs_to_process = vec![];
 
     for path in paths {
