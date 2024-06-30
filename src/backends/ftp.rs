@@ -95,7 +95,16 @@ impl FSBackend for FTPBackend {
             .collect())
     }
 
-    async fn create_file(&self, path: &str, contents: Option<&[u8]>) -> Result<()> {
+    async fn create_file(
+        &self,
+        path: &str,
+        overwrite: bool,
+        contents: Option<&[u8]>,
+    ) -> Result<()> {
+        if !overwrite && self.exists(path).await? {
+            return Err(Error::FileAlreadyExists(path.to_string()));
+        }
+
         self.stream
             .lock()
             .await
@@ -110,26 +119,29 @@ impl FSBackend for FTPBackend {
         Ok(())
     }
 
-    async fn rename_file(&self, path: &str, new_name: &str) -> Result<()> {
-        self.stream
-            .lock()
-            .await
-            .rename(
-                path,
-                &format!("{}/{new_name}", remove_lowest_path_item(path)),
-            )
-            .await?;
+    async fn rename_file(&self, path: &str, new_name: &str, overwrite: bool) -> Result<()> {
+        let new_path = format!("{}/{new_name}", remove_lowest_path_item(path));
+
+        if !overwrite && self.exists(&new_path).await? {
+            return Err(Error::FileAlreadyExists(new_path));
+        }
+
+        self.stream.lock().await.rename(path, &new_path).await?;
         Ok(())
     }
 
-    async fn move_file(&self, from: &str, to: &str) -> Result<()> {
+    async fn move_file(&self, from: &str, to: &str, overwrite: bool) -> Result<()> {
+        if !overwrite && self.exists(to).await? {
+            return Err(Error::FileAlreadyExists(to.to_string()));
+        }
+
         self.stream.lock().await.rename(from, to).await?;
         Ok(())
     }
 
-    async fn copy_file(&self, from: &str, to: &str) -> Result<()> {
+    async fn copy_file(&self, from: &str, to: &str, overwrite: bool) -> Result<()> {
         let contents = self.retrieve_file_content(from).await?;
-        self.create_file(to, Some(&contents)).await?;
+        self.create_file(to, overwrite, Some(&contents)).await?;
         Ok(())
     }
 

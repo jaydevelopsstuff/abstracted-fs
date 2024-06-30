@@ -1,4 +1,4 @@
-use bitflags::{bitflags, Flags};
+use bitflags::bitflags;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
@@ -7,15 +7,15 @@ pub struct UnixFilePermissionFlags(u32);
 
 bitflags! {
     impl UnixFilePermissionFlags: u32 {
-        const OWNER_READ = 0b100000000;
+        const OWNER_READ =  0b100000000;
         const OWNER_WRITE = 0b010000000;
-        const OWNER_EXEC = 0b001000000;
-        const GROUP_READ = 0b000100000;
+        const OWNER_EXEC =  0b001000000;
+        const GROUP_READ =  0b000100000;
         const GROUP_WRITE = 0b000010000;
-        const GROUP_EXEC = 0b000001000;
-        const OTHER_READ = 0b000000100;
+        const GROUP_EXEC =  0b000001000;
+        const OTHER_READ =  0b000000100;
         const OTHER_WRITE = 0b000000010;
-        const OTHER_EXEC = 0b000000001;
+        const OTHER_EXEC =  0b000000001;
     }
 }
 

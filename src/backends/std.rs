@@ -1,5 +1,4 @@
 use std::fs::Metadata as StdMetadata;
-use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
 use async_trait::async_trait;
@@ -7,7 +6,7 @@ use tokio::fs;
 
 use crate::data::{File, FileType, Metadata};
 use crate::error::{Error, Result};
-use crate::unix::{UnixFilePermissionFlags, UnixFilePermissions};
+use crate::unix::UnixFilePermissions;
 use crate::util::remove_lowest_path_item;
 use crate::FSBackend;
 
@@ -77,8 +76,17 @@ impl FSBackend for StdBackend {
         Ok(files)
     }
 
-    async fn create_file(&self, path: &str, contents: Option<&[u8]>) -> Result<()> {
-        tokio::fs::File::create_new(path).await?;
+    async fn create_file(
+        &self,
+        path: &str,
+        overwrite: bool,
+        contents: Option<&[u8]>,
+    ) -> Result<()> {
+        if !overwrite && self.exists(path).await? {
+            return Err(Error::FileAlreadyExists(path.to_string()));
+        }
+
+        tokio::fs::File::create(path).await?;
         if let Some(contents) = contents {
             tokio::fs::write(path, contents).await?;
         }
@@ -90,21 +98,30 @@ impl FSBackend for StdBackend {
         Ok(())
     }
 
-    async fn rename_file(&self, path: &str, new_name: &str) -> Result<()> {
-        tokio::fs::rename(
-            path,
-            format!("{}/{new_name}", remove_lowest_path_item(path)),
-        )
-        .await?;
+    async fn rename_file(&self, path: &str, new_name: &str, overwrite: bool) -> Result<()> {
+        let new_path = format!("{}/{new_name}", remove_lowest_path_item(path));
+        if !overwrite && self.exists(&new_path).await? {
+            return Err(Error::FileAlreadyExists(new_path));
+        }
+
+        tokio::fs::rename(path, new_path).await?;
         Ok(())
     }
 
-    async fn move_file(&self, from: &str, to: &str) -> Result<()> {
+    async fn move_file(&self, from: &str, to: &str, overwrite: bool) -> Result<()> {
+        if !overwrite && self.exists(to).await? {
+            return Err(Error::FileAlreadyExists(to.to_string()));
+        }
+
         tokio::fs::rename(from, to).await?;
         Ok(())
     }
 
-    async fn copy_file(&self, from: &str, to: &str) -> Result<()> {
+    async fn copy_file(&self, from: &str, to: &str, overwrite: bool) -> Result<()> {
+        if !overwrite && self.exists(to).await? {
+            return Err(Error::FileAlreadyExists(to.to_string()));
+        }
+
         tokio::fs::copy(from, to).await?;
         Ok(())
     }

@@ -27,6 +27,15 @@ pub enum Error {
     Unsupported(String, String),
 }
 
+impl Error {
+    pub fn is_already_exists_error(&self) -> bool {
+        matches!(
+            self,
+            Self::FileAlreadyExists(_) | Self::StdIO(std::io::ErrorKind::AlreadyExists)
+        )
+    }
+}
+
 impl From<std::io::Error> for Error {
     fn from(value: std::io::Error) -> Self {
         Self::StdIO(value.kind())
