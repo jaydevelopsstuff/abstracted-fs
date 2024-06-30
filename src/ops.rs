@@ -266,11 +266,11 @@ fn update_and_notify_progress_handler<F: Fn(&TransitProgress) -> TransitProgress
 macro_rules! resolve_progress_handler_response {
     ($response:expr, $backend:expr, $progress:expr) => {
         match $response {
-            TransitProgressResponse::ContinueOrAbort => {
-                if let TransitState::Other(error) = $progress.state {
-                    return Err(error);
-                }
-            }
+            TransitProgressResponse::ContinueOrAbort => match $progress.state {
+                TransitState::Exists(_, path) => return Err(Error::FileAlreadyExists(path)),
+                TransitState::Other(error) => return Err(error),
+                _ => (),
+            },
             TransitProgressResponse::Skip => (),
             TransitProgressResponse::Overwrite => (),
             TransitProgressResponse::Abort => return Ok(()),
