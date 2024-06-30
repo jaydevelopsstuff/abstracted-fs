@@ -127,7 +127,11 @@ pub async fn move_files<S: AsRef<str>>(backend: &dyn FSBackend, from: &[S], to: 
             let dir_name = extract_lowest_path_item(&dir.0);
             let to_dir_path = format!("{to}{parent_dirs}{dir_name}");
 
-            backend.create_dir(&to_dir_path).await?;
+            if let Err(error) = backend.create_dir(&to_dir_path).await {
+                if !error.is_already_exists_error() {
+                    return Err(error);
+                }
+            }
 
             for file in backend.read_dir(&dir.0).await? {
                 match file.metadata.r#type {
@@ -194,7 +198,11 @@ pub async fn copy_files<S: AsRef<str>>(backend: &dyn FSBackend, from: &[S], to: 
             let dir_name = extract_lowest_path_item(&dir.0);
             let to_dir_path = format!("{to}{parent_dirs}{dir_name}");
 
-            backend.create_dir(&to_dir_path).await?;
+            if let Err(error) = backend.create_dir(&to_dir_path).await {
+                if !error.is_already_exists_error() {
+                    return Err(error);
+                }
+            }
 
             for file in backend.read_dir(&dir.0).await? {
                 match file.metadata.r#type {
@@ -230,10 +238,18 @@ pub struct TransitProgress {
 pub enum TransitState {
     #[default]
     Normal,
-    Exists(File, String),
+    Exists(TransferConflict),
     Other(Error),
 }
 
+#[derive(Debug, Clone)]
+pub struct TransferConflict {
+    pub file_type: FileType,
+    pub origin: String,
+    pub destination: String,
+}
+
+// TODO: Retry
 #[derive(Debug, Clone)]
 pub enum TransitProgressResponse {
     ContinueOrAbort,
@@ -246,33 +262,41 @@ fn update_and_notify_progress_handler<F: Fn(&TransitProgress) -> TransitProgress
     progress: &mut TransitProgress,
     progress_handler: &F,
     error: Option<Error>,
-    current_file: File,
+    current_file_type: FileType,
+    current_file_path: String,
     current_file_dest: String,
+    current_file_size: Option<u64>,
 ) -> TransitProgressResponse {
     progress.state = if let Some(error) = error {
         if error.is_already_exists_error() {
-            TransitState::Exists(current_file.clone(), current_file_dest)
+            TransitState::Exists(TransferConflict {
+                file_type: current_file_type,
+                origin: current_file_path,
+                destination: current_file_dest,
+            })
         } else {
             TransitState::Other(error)
         }
     } else {
         TransitState::Normal
     };
-    progress.processed_bytes += current_file.metadata.size.unwrap_or(0);
+    progress.processed_bytes += current_file_size.unwrap_or(0);
 
     progress_handler(progress)
 }
 
 macro_rules! resolve_progress_handler_response {
-    ($response:expr, $backend:expr, $progress:expr) => {
+    ($response:expr, $overwrite_op:expr, $progress:expr) => {
         match $response {
             TransitProgressResponse::ContinueOrAbort => match $progress.state {
-                TransitState::Exists(_, path) => return Err(Error::FileAlreadyExists(path)),
+                TransitState::Exists(conflict) => {
+                    return Err(Error::FileAlreadyExists(conflict.destination))
+                }
                 TransitState::Other(error) => return Err(error),
                 _ => (),
             },
             TransitProgressResponse::Skip => (),
-            TransitProgressResponse::Overwrite => (),
+            TransitProgressResponse::Overwrite => $overwrite_op().await?,
             TransitProgressResponse::Abort => return Ok(()),
         }
     };
@@ -320,11 +344,17 @@ pub async fn move_files_with_progress<
                     &mut progress,
                     &progress_handler,
                     result.err(),
-                    file,
-                    file_dest,
+                    file.metadata.r#type,
+                    file.path.clone(),
+                    file_dest.clone(),
+                    file.metadata.size,
                 );
 
-                resolve_progress_handler_response!(response, backend, progress);
+                resolve_progress_handler_response!(
+                    response,
+                    || backend.move_file(&file.path, &file_dest, true),
+                    progress
+                );
             }
             FileType::Dir => dirs_to_duplicate.push((file.path, "/".into())),
             t => return Err(Error::CannotCopyOrMoveFileType(t)),
@@ -340,7 +370,11 @@ pub async fn move_files_with_progress<
             let dir_name = extract_lowest_path_item(&dir.0);
             let to_dir_path = format!("{to}{parent_dirs}{dir_name}");
 
-            backend.create_dir(&to_dir_path).await?;
+            if let Err(error) = backend.create_dir(&to_dir_path).await {
+                if !error.is_already_exists_error() {
+                    return Err(error);
+                }
+            }
 
             for file in backend.read_dir(&dir.0).await? {
                 match file.metadata.r#type {
@@ -352,11 +386,17 @@ pub async fn move_files_with_progress<
                             &mut progress,
                             &progress_handler,
                             result.err(),
-                            file,
-                            file_dest,
+                            file.metadata.r#type,
+                            file.path.clone(),
+                            file_dest.clone(),
+                            file.metadata.size,
                         );
 
-                        resolve_progress_handler_response!(response, backend, progress);
+                        resolve_progress_handler_response!(
+                            response,
+                            || backend.move_file(&file.path, &file_dest, true),
+                            progress
+                        );
                     }
                     FileType::Dir => {
                         new_dirs_to_copy.push((file.path, format!("{parent_dirs}{dir_name}/")));
@@ -412,7 +452,7 @@ pub async fn copy_files_with_progress<
         .await?
     {
         match file.metadata.r#type {
-            FileType::File | FileType::Symlink => {
+            FileType::File => {
                 let file_dest = format!("{to}/{}", extract_lowest_path_item(&file.path));
                 let result = backend.copy_file(&file.path, &file_dest, false).await;
 
@@ -420,11 +460,17 @@ pub async fn copy_files_with_progress<
                     &mut progress,
                     &progress_handler,
                     result.err(),
-                    file,
-                    file_dest,
+                    file.metadata.r#type,
+                    file.path.clone(),
+                    file_dest.clone(),
+                    file.metadata.size,
                 );
 
-                resolve_progress_handler_response!(response, backend, progress);
+                resolve_progress_handler_response!(
+                    response,
+                    || backend.copy_file(&file.path, &file_dest, true),
+                    progress
+                );
             }
             FileType::Dir => dirs_to_copy.push((file.path, "/".into())),
             t => return Err(Error::CannotCopyOrMoveFileType(t)),
@@ -439,11 +485,15 @@ pub async fn copy_files_with_progress<
             let dir_name = extract_lowest_path_item(&dir.0);
             let to_dir_path = format!("{to}{parent_dirs}{dir_name}");
 
-            backend.create_dir(&to_dir_path).await?;
+            if let Err(error) = backend.create_dir(&to_dir_path).await {
+                if !error.is_already_exists_error() {
+                    return Err(error);
+                }
+            }
 
             for file in backend.read_dir(&dir.0).await? {
                 match file.metadata.r#type {
-                    FileType::File | FileType::Symlink => {
+                    FileType::File => {
                         let file_dest = format!("{to_dir_path}/{}", file.name);
                         let result = backend.copy_file(&file.path, &file_dest, false).await;
 
@@ -451,11 +501,426 @@ pub async fn copy_files_with_progress<
                             &mut progress,
                             &progress_handler,
                             result.err(),
-                            file,
-                            file_dest,
+                            file.metadata.r#type,
+                            file.path.clone(),
+                            file_dest.clone(),
+                            file.metadata.size,
                         );
 
-                        resolve_progress_handler_response!(response, backend, progress);
+                        resolve_progress_handler_response!(
+                            response,
+                            || backend.move_file(&file.path, &file_dest, true),
+                            progress
+                        );
+                    }
+                    FileType::Dir => {
+                        new_dirs_to_copy.push((file.path, format!("{parent_dirs}{dir_name}/")));
+                    }
+                    t => return Err(Error::CannotCopyOrMoveFileType(t)),
+                }
+            }
+        }
+
+        dirs_to_copy = new_dirs_to_copy
+    }
+
+    Ok(())
+}
+
+pub async fn move_files_between<S: AsRef<str>>(
+    from_backend: &dyn FSBackend,
+    to_backend: &dyn FSBackend,
+    from: &[S],
+    to: S,
+) -> Result<()> {
+    let to = to.as_ref();
+
+    if !to_backend.exists(to).await? {
+        return Err(Error::FileNonexistent(to.to_string()));
+    }
+
+    // The first string in the tuple represents the origin path, the second
+    // represents the directories that encapsulate it relative to the lowest
+    // directory in the from path.
+    let mut dirs_to_duplicate: Vec<(String, String)> = vec![];
+
+    for path in from {
+        let path = path.as_ref();
+
+        match from_backend.get_file_type(path).await? {
+            FileType::File => {
+                move_file_between(
+                    from_backend,
+                    to_backend,
+                    path,
+                    &format!("{to}/{}", extract_lowest_path_item(path)),
+                    false,
+                )
+                .await?;
+            }
+            FileType::Dir => dirs_to_duplicate.push((path.into(), "/".into())),
+            t => return Err(Error::CannotCopyOrMoveFileType(t)),
+        }
+    }
+
+    let mut dirs_to_remove = vec![];
+    while !dirs_to_duplicate.is_empty() {
+        let mut new_dirs_to_copy = vec![];
+
+        for dir in dirs_to_duplicate {
+            let parent_dirs = dir.1;
+            let dir_name = extract_lowest_path_item(&dir.0);
+            let to_dir_path = format!("{to}{parent_dirs}{dir_name}");
+
+            if let Err(error) = to_backend.create_dir(&to_dir_path).await {
+                if !error.is_already_exists_error() {
+                    return Err(error);
+                }
+            }
+
+            for file in from_backend.read_dir(&dir.0).await? {
+                match file.metadata.r#type {
+                    FileType::File => {
+                        move_file_between(
+                            from_backend,
+                            to_backend,
+                            &file.path,
+                            &format!("{to_dir_path}/{}", file.name),
+                            false,
+                        )
+                        .await?;
+                    }
+                    FileType::Dir => {
+                        new_dirs_to_copy.push((file.path, format!("{parent_dirs}{dir_name}/")));
+                    }
+                    t => return Err(Error::CannotCopyOrMoveFileType(t)),
+                }
+            }
+
+            dirs_to_remove.push(dir.0);
+        }
+
+        dirs_to_duplicate = new_dirs_to_copy
+    }
+
+    while let Some(dir) = dirs_to_remove.pop() {
+        from_backend.remove_dir(&dir).await?;
+    }
+
+    Ok(())
+}
+
+pub async fn copy_files_between<S: AsRef<str>>(
+    from_backend: &dyn FSBackend,
+    to_backend: &dyn FSBackend,
+    from: &[S],
+    to: S,
+) -> Result<()> {
+    let to = to.as_ref();
+
+    if !to_backend.exists(to).await? {
+        return Err(Error::FileNonexistent(to.to_string()));
+    }
+
+    // The first string in the tuple represents the origin path, the second
+    // represents the directories that encapsulate it relative to the lowest
+    // directory in the from path.
+    let mut dirs_to_copy: Vec<(String, String)> = vec![];
+
+    for path in from {
+        let path = path.as_ref();
+
+        match from_backend.get_file_type(path).await? {
+            FileType::File | FileType::Symlink => {
+                copy_file_between(
+                    from_backend,
+                    to_backend,
+                    path,
+                    &format!("{to}/{}", extract_lowest_path_item(path)),
+                    false,
+                )
+                .await?
+            }
+            FileType::Dir => dirs_to_copy.push((path.into(), "/".into())),
+            t => return Err(Error::CannotCopyOrMoveFileType(t)),
+        }
+    }
+
+    while !dirs_to_copy.is_empty() {
+        let mut new_dirs_to_copy = vec![];
+
+        for dir in dirs_to_copy {
+            let parent_dirs = dir.1;
+            let dir_name = extract_lowest_path_item(&dir.0);
+            let to_dir_path = format!("{to}{parent_dirs}{dir_name}");
+
+            if let Err(error) = to_backend.create_dir(&to_dir_path).await {
+                if !error.is_already_exists_error() {
+                    return Err(error);
+                }
+            }
+
+            for file in from_backend.read_dir(&dir.0).await? {
+                match file.metadata.r#type {
+                    FileType::File | FileType::Symlink => {
+                        copy_file_between(
+                            from_backend,
+                            to_backend,
+                            &file.path,
+                            &format!("{to_dir_path}/{}", file.name),
+                            false,
+                        )
+                        .await?;
+                    }
+                    FileType::Dir => {
+                        new_dirs_to_copy.push((file.path, format!("{parent_dirs}{dir_name}/")));
+                    }
+                    t => return Err(Error::CannotCopyOrMoveFileType(t)),
+                }
+            }
+        }
+
+        dirs_to_copy = new_dirs_to_copy
+    }
+
+    Ok(())
+}
+
+pub async fn move_files_between_with_progress<
+    S: AsRef<str>,
+    F: Fn(&TransitProgress) -> TransitProgressResponse,
+>(
+    from_backend: &dyn FSBackend,
+    to_backend: &dyn FSBackend,
+    from: &[S],
+    to: S,
+    progress_handler: F,
+) -> Result<()> {
+    let to = to.as_ref();
+
+    if !to_backend.exists(to).await? {
+        return Err(Error::FileNonexistent(to.to_string()));
+    }
+
+    let mut progress = TransitProgress {
+        total_bytes: calculate_total_size(from_backend, from).await?,
+        ..Default::default()
+    };
+
+    // The first string in the tuple represents the origin path, the second
+    // represents the directories that encapsulate it relative to the lowest
+    // directory in the from path.
+    let mut dirs_to_duplicate: Vec<(String, String)> = vec![];
+
+    for file in from_backend
+        .retrieve_files(
+            from.into_iter()
+                .map(|path| path.as_ref().to_string())
+                .collect(),
+        )
+        .await?
+    {
+        match file.metadata.r#type {
+            FileType::File => {
+                let file_dest = format!("{to}/{}", extract_lowest_path_item(&file.path));
+                let result =
+                    move_file_between(from_backend, to_backend, &file.path, &file_dest, false)
+                        .await;
+
+                let response = update_and_notify_progress_handler(
+                    &mut progress,
+                    &progress_handler,
+                    result.err(),
+                    file.metadata.r#type,
+                    file.path.clone(),
+                    file_dest.clone(),
+                    file.metadata.size,
+                );
+
+                resolve_progress_handler_response!(
+                    response,
+                    || move_file_between(from_backend, to_backend, &file.path, &file_dest, true),
+                    progress
+                );
+            }
+            FileType::Dir => dirs_to_duplicate.push((file.path, "/".into())),
+            t => return Err(Error::CannotCopyOrMoveFileType(t)),
+        }
+    }
+
+    let mut dirs_to_remove = vec![];
+    while !dirs_to_duplicate.is_empty() {
+        let mut new_dirs_to_copy = vec![];
+
+        for dir in dirs_to_duplicate {
+            let parent_dirs = dir.1;
+            let dir_name = extract_lowest_path_item(&dir.0);
+            let to_dir_path = format!("{to}{parent_dirs}{dir_name}");
+
+            if let Err(error) = to_backend.create_dir(&to_dir_path).await {
+                if !error.is_already_exists_error() {
+                    return Err(error);
+                }
+            }
+
+            for file in from_backend.read_dir(&dir.0).await? {
+                match file.metadata.r#type {
+                    FileType::File | FileType::Symlink => {
+                        let file_dest = format!("{to_dir_path}/{}", file.name);
+                        let result = move_file_between(
+                            from_backend,
+                            to_backend,
+                            &file.path,
+                            &file_dest,
+                            false,
+                        )
+                        .await;
+
+                        let response = update_and_notify_progress_handler(
+                            &mut progress,
+                            &progress_handler,
+                            result.err(),
+                            file.metadata.r#type,
+                            file.path.clone(),
+                            file_dest.clone(),
+                            file.metadata.size,
+                        );
+
+                        resolve_progress_handler_response!(
+                            response,
+                            || move_file_between(
+                                from_backend,
+                                to_backend,
+                                &file.path,
+                                &file_dest,
+                                true
+                            ),
+                            progress
+                        );
+                    }
+                    FileType::Dir => {
+                        new_dirs_to_copy.push((file.path, format!("{parent_dirs}{dir_name}/")));
+                    }
+                    t => return Err(Error::CannotCopyOrMoveFileType(t)),
+                }
+            }
+
+            dirs_to_remove.push(dir.0);
+        }
+
+        dirs_to_duplicate = new_dirs_to_copy
+    }
+
+    while let Some(dir) = dirs_to_remove.pop() {
+        from_backend.remove_dir(&dir).await?;
+    }
+
+    Ok(())
+}
+
+pub async fn copy_files_between_with_progress<
+    S: AsRef<str>,
+    F: Fn(&TransitProgress) -> TransitProgressResponse,
+>(
+    from_backend: &dyn FSBackend,
+    to_backend: &dyn FSBackend,
+    from: &[S],
+    to: S,
+    progress_handler: F,
+) -> Result<()> {
+    let to = to.as_ref();
+
+    if !to_backend.exists(to).await? {
+        return Err(Error::FileNonexistent(to.to_string()));
+    }
+
+    let mut progress = TransitProgress {
+        total_bytes: calculate_total_size(from_backend, from).await?,
+        ..Default::default()
+    };
+
+    // The first string in the tuple represents the origin path, the second
+    // represents the directories that encapsulate it relative to the lowest
+    // directory in the from path.
+    let mut dirs_to_copy: Vec<(String, String)> = vec![];
+
+    for file in from_backend
+        .retrieve_files(
+            from.into_iter()
+                .map(|path| path.as_ref().to_string())
+                .collect(),
+        )
+        .await?
+    {
+        match file.metadata.r#type {
+            FileType::File => {
+                let file_dest = format!("{to}/{}", extract_lowest_path_item(&file.path));
+                let result =
+                    copy_file_between(from_backend, to_backend, &file.path, &file_dest, false)
+                        .await;
+
+                let response = update_and_notify_progress_handler(
+                    &mut progress,
+                    &progress_handler,
+                    result.err(),
+                    file.metadata.r#type,
+                    file.path.clone(),
+                    file_dest.clone(),
+                    file.metadata.size,
+                );
+
+                resolve_progress_handler_response!(
+                    response,
+                    || copy_file_between(from_backend, to_backend, &file.path, &file_dest, true),
+                    progress
+                );
+            }
+            FileType::Dir => dirs_to_copy.push((file.path, "/".into())),
+            t => return Err(Error::CannotCopyOrMoveFileType(t)),
+        }
+    }
+
+    while !dirs_to_copy.is_empty() {
+        let mut new_dirs_to_copy = vec![];
+
+        for dir in dirs_to_copy {
+            let parent_dirs = dir.1;
+            let dir_name = extract_lowest_path_item(&dir.0);
+            let to_dir_path = format!("{to}{parent_dirs}{dir_name}");
+
+            if let Err(error) = to_backend.create_dir(&to_dir_path).await {
+                if !error.is_already_exists_error() {
+                    return Err(error);
+                }
+            }
+
+            for file in from_backend.read_dir(&dir.0).await? {
+                match file.metadata.r#type {
+                    FileType::File => {
+                        let file_dest = format!("{to_dir_path}/{}", file.name);
+                        let result = from_backend.copy_file(&file.path, &file_dest, false).await;
+
+                        let response = update_and_notify_progress_handler(
+                            &mut progress,
+                            &progress_handler,
+                            result.err(),
+                            file.metadata.r#type,
+                            file.path.clone(),
+                            file_dest.clone(),
+                            file.metadata.size,
+                        );
+
+                        resolve_progress_handler_response!(
+                            response,
+                            || copy_file_between(
+                                from_backend,
+                                to_backend,
+                                &file.path,
+                                &file_dest,
+                                true
+                            ),
+                            progress
+                        );
                     }
                     FileType::Dir => {
                         new_dirs_to_copy.push((file.path, format!("{parent_dirs}{dir_name}/")));
@@ -495,46 +960,4 @@ async fn copy_file_between(
         .create_file(to, overwrite, Some(&contents))
         .await?;
     Ok(())
-}
-
-pub async fn move_files_between<S: AsRef<str>>(
-    from_backend: &dyn FSBackend,
-    to_backend: &dyn FSBackend,
-    from: &[S],
-    to: S,
-) -> Result<()> {
-    todo!()
-}
-
-pub async fn copy_files_between<S: AsRef<str>>(
-    from_backend: &dyn FSBackend,
-    to_backend: &dyn FSBackend,
-    from: &[S],
-    to: S,
-) -> Result<()> {
-    todo!()
-}
-
-pub async fn move_files_between_with_progress<
-    S: AsRef<str>,
-    F: FnMut(&TransitProgress) -> TransitProgressResponse,
->(
-    from_backend: &dyn FSBackend,
-    to_backend: &dyn FSBackend,
-    from: &[S],
-    to: S,
-) -> Result<()> {
-    todo!()
-}
-
-pub async fn copy_files_between_with_progress<
-    S: AsRef<str>,
-    F: FnMut(&TransitProgress) -> TransitProgressResponse,
->(
-    from_backend: &dyn FSBackend,
-    to_backend: &dyn FSBackend,
-    from: &[S],
-    to: S,
-) -> Result<()> {
-    todo!()
 }
