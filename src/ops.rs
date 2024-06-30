@@ -227,7 +227,7 @@ pub async fn copy_files<S: AsRef<str>>(backend: &dyn FSBackend, from: &[S], to: 
     Ok(())
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct TransitProgress {
     pub processed_bytes: u64,
     pub total_bytes: u64,
@@ -236,7 +236,7 @@ pub struct TransitProgress {
     pub state: TransitState,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 pub enum TransitState {
     #[default]
     Normal,
@@ -262,7 +262,7 @@ pub enum TransitProgressResponse {
 
 async fn update_and_notify_progress_handler<Fut: Future<Output = TransitProgressResponse>>(
     progress: &mut TransitProgress,
-    progress_handler: impl Fn(&TransitProgress) -> Fut,
+    progress_handler: impl Fn(TransitProgress) -> Fut,
     error: Option<Error>,
     current_file_type: FileType,
     current_file_path: String,
@@ -284,7 +284,7 @@ async fn update_and_notify_progress_handler<Fut: Future<Output = TransitProgress
     };
     progress.processed_bytes += current_file_size.unwrap_or(0);
 
-    progress_handler(progress).await
+    progress_handler(progress.clone()).await
 }
 
 macro_rules! resolve_progress_handler_response {
@@ -311,7 +311,7 @@ pub async fn move_files_with_progress<
     backend: &dyn FSBackend,
     from: &[S],
     to: S,
-    progress_handler: impl Fn(&TransitProgress) -> Fut,
+    progress_handler: impl Fn(TransitProgress) -> Fut,
 ) -> Result<()> {
     let to = to.as_ref();
 
@@ -429,7 +429,7 @@ pub async fn copy_files_with_progress<
     backend: &dyn FSBackend,
     from: &[S],
     to: S,
-    progress_handler: impl Fn(&TransitProgress) -> Fut,
+    progress_handler: impl Fn(TransitProgress) -> Fut,
 ) -> Result<()> {
     let to = to.as_ref();
 
@@ -700,7 +700,7 @@ pub async fn move_files_between_with_progress<
     to_backend: &dyn FSBackend,
     from: &[S],
     to: S,
-    progress_handler: impl Fn(&TransitProgress) -> Fut,
+    progress_handler: impl Fn(TransitProgress) -> Fut,
 ) -> Result<()> {
     let to = to.as_ref();
 
@@ -834,7 +834,7 @@ pub async fn copy_files_between_with_progress<
     to_backend: &dyn FSBackend,
     from: &[S],
     to: S,
-    progress_handler: impl Fn(&TransitProgress) -> Fut,
+    progress_handler: impl Fn(TransitProgress) -> Fut,
 ) -> Result<()> {
     let to = to.as_ref();
 

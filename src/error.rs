@@ -1,17 +1,19 @@
+use std::sync::Arc;
+
 use crate::data::FileType;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[derive(thiserror::Error, Debug)]
+#[derive(thiserror::Error, Debug, Clone)]
 pub enum Error {
     #[error("Rust StdIO Error (${0})")]
     StdIO(std::io::ErrorKind),
     #[error("FTP Error ({0})")]
-    FTP(#[from] suppaftp::types::FtpError),
+    FTP(#[from] Arc<suppaftp::types::FtpError>),
     #[error("SFTP Error ({0})")]
     SFTP(#[from] russh_sftp::client::error::Error),
     #[error("Trash Error ({0})")]
-    Trash(#[from] trash::Error),
+    Trash(#[from] Arc<trash::Error>),
 
     #[error("Cannot copy or move file of type")] // TODO
     CannotCopyOrMoveFileType(FileType),
