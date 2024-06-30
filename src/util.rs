@@ -1,4 +1,4 @@
-use std::path::MAIN_SEPARATOR;
+use std::path::{MAIN_SEPARATOR, MAIN_SEPARATOR_STR};
 
 fn rfind_utf8(s: &str, char: char) -> Option<usize> {
     if let Some(rev_pos) = s.chars().rev().position(|c| c == char) {
