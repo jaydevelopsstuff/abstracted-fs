@@ -9,11 +9,11 @@ pub enum Error {
     #[error("Rust StdIO Error (${0})")]
     StdIO(std::io::ErrorKind),
     #[error("FTP Error ({0})")]
-    FTP(#[from] Arc<suppaftp::types::FtpError>),
+    FTP(Arc<suppaftp::types::FtpError>),
     #[error("SFTP Error ({0})")]
     SFTP(#[from] russh_sftp::client::error::Error),
     #[error("Trash Error ({0})")]
-    Trash(#[from] Arc<trash::Error>),
+    Trash(Arc<trash::Error>),
 
     #[error("Cannot copy or move file of type")] // TODO
     CannotCopyOrMoveFileType(FileType),
@@ -41,5 +41,17 @@ impl Error {
 impl From<std::io::Error> for Error {
     fn from(value: std::io::Error) -> Self {
         Self::StdIO(value.kind())
+    }
+}
+
+impl From<suppaftp::types::FtpError> for Error {
+    fn from(value: suppaftp::types::FtpError) -> Self {
+        Self::FTP(Arc::new(value))
+    }
+}
+
+impl From<trash::Error> for Error {
+    fn from(value: trash::Error) -> Self {
+        Self::Trash(Arc::new(value))
     }
 }
