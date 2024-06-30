@@ -8,6 +8,7 @@ use tokio::io::AsyncWriteExt;
 use crate::data::{File, FileType, Metadata};
 use crate::error::{Error, Result};
 use crate::unix::{UnixFilePermissionFlags, UnixFilePermissions};
+use crate::util::remove_lowest_path_item;
 use crate::FSBackend;
 
 pub struct SFTPBackend {
@@ -68,25 +69,6 @@ impl FSBackend for SFTPBackend {
         Ok(self.session.read(path).await?)
     }
 
-    async fn create_file(&self, path: &str, contents: Option<&[u8]>) -> Result<()> {
-        if self.exists(&path).await? {
-            return Err(Error::AlreadyExists(path.to_string()));
-        }
-
-        let mut file = self.session.create(path).await?;
-
-        if let Some(contents) = contents {
-            file.write_all(contents).await?;
-        }
-
-        Ok(())
-    }
-
-    async fn create_dir(&self, path: &str) -> Result<()> {
-        self.session.create_dir(path).await?;
-        Ok(())
-    }
-
     async fn read_dir(&self, path: &str) -> Result<Vec<File>> {
         Ok(self
             .session
@@ -106,6 +88,50 @@ impl FSBackend for SFTPBackend {
                 }
             })
             .collect())
+    }
+
+    async fn create_file(&self, path: &str, contents: Option<&[u8]>) -> Result<()> {
+        if self.exists(&path).await? {
+            return Err(Error::FileAlreadyExists(path.to_string()));
+        }
+
+        let mut file = self.session.create(path).await?;
+
+        if let Some(contents) = contents {
+            file.write_all(contents).await?;
+        }
+
+        Ok(())
+    }
+
+    async fn create_dir(&self, path: &str) -> Result<()> {
+        self.session.create_dir(path).await?;
+        Ok(())
+    }
+
+    async fn rename_file(&self, path: &str, new_name: &str) -> Result<()> {
+        self.session
+            .rename(
+                path,
+                format!("{}/{new_name}", remove_lowest_path_item(path)),
+            )
+            .await?;
+        Ok(())
+    }
+
+    async fn move_file(&self, from: &str, to: &str) -> Result<()> {
+        self.session.rename(from, to).await?;
+        Ok(())
+    }
+
+    async fn copy_file(&self, from: &str, to: &str) -> Result<()> {
+        let metadata = self.session.metadata(from).await?;
+        let contents = self.retrieve_file_content(from).await?;
+
+        self.create_file(to, Some(&contents)).await?;
+        self.session.set_metadata(to, metadata).await?;
+
+        Ok(())
     }
 
     async fn remove_file(&self, path: &str) -> Result<()> {

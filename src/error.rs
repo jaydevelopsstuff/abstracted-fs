@@ -1,3 +1,5 @@
+use crate::data::FileType;
+
 pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(thiserror::Error, Debug)]
@@ -11,8 +13,12 @@ pub enum Error {
     #[error("Trash Error ({0})")]
     Trash(#[from] trash::Error),
 
+    #[error("Cannot copy or move file of type")] // TODO
+    CannotCopyOrMoveFileType(FileType),
+    #[error("File at path '{0}' is nonexistent")]
+    FileNonexistent(String),
     #[error("File '{0}' already exists")]
-    AlreadyExists(String),
+    FileAlreadyExists(String),
     #[error("Could not construct FileMetadata without a file name")]
     NoFileName,
     #[error("Failed to convert string to UTF-8")]

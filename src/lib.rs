@@ -2,10 +2,13 @@ pub mod backends;
 pub mod data;
 pub mod error;
 pub mod unix;
+mod util;
 
 use async_trait::async_trait;
 use data::{File, FileType};
+use error::Error;
 use unix::UnixFilePermissions;
+use util::extract_lowest_path_item;
 
 use crate::error::Result;
 
@@ -49,24 +52,6 @@ pub async fn remove_all<S: AsRef<str>>(backend: &dyn FSBackend, paths: &[S]) -> 
     Ok(())
 }
 
-pub async fn move_files_between<S: AsRef<str>>(
-    from_backend: &dyn FSBackend,
-    to_backend: &dyn FSBackend,
-    from: &[S],
-    to: S,
-) -> Result<()> {
-    todo!()
-}
-
-pub async fn copy_files_between<S: AsRef<str>>(
-    from_backend: &dyn FSBackend,
-    to_backend: &dyn FSBackend,
-    from: &[S],
-    to: S,
-) -> Result<()> {
-    todo!()
-}
-
 #[derive(Debug, Clone)]
 pub struct TransitProgress {
     pub processed_bytes: u64,
@@ -85,6 +70,107 @@ pub enum TransitState {
 pub enum TransitProgressResponse {
     ContinueOrAbort,
     Abort,
+}
+
+pub async fn move_files<S: AsRef<str>>(backend: &dyn FSBackend, from: &[S], to: S) -> Result<()> {
+    todo!()
+}
+
+pub async fn copy_files<S: AsRef<str>>(backend: &dyn FSBackend, from: &[S], to: S) -> Result<()> {
+    let to = to.as_ref();
+
+    if !backend.exists(to).await? {
+        return Err(Error::FileNonexistent(to.to_string()));
+    }
+
+    // The first string in the tuple represents the origin path, the second
+    // represents the directories that encapsulate it relative to the lowest
+    // directory in the from path.
+    let mut dirs_to_copy: Vec<(String, String)> = vec![];
+
+    for path in from {
+        let path = path.as_ref();
+
+        match backend.get_file_type(path).await? {
+            FileType::File | FileType::Symlink => {
+                backend
+                    .copy_file(path, &format!("{to}/{}", extract_lowest_path_item(path)))
+                    .await?
+            }
+            FileType::Dir => dirs_to_copy.push((path.into(), "/".into())),
+            t => return Err(Error::CannotCopyOrMoveFileType(t)),
+        }
+    }
+
+    while !dirs_to_copy.is_empty() {
+        let mut new_dirs_to_copy = vec![];
+
+        for dir in dirs_to_copy {
+            let parent_dirs = dir.1;
+            let dir_name = extract_lowest_path_item(&dir.0);
+            let to_dir_path = format!("{to}{parent_dirs}{dir_name}");
+
+            backend.create_dir(&to_dir_path).await?;
+
+            for item in backend.read_dir(&dir.0).await? {
+                match item.metadata.r#type {
+                    FileType::File | FileType::Symlink => {
+                        backend
+                            .copy_file(&item.path, &format!("{to_dir_path}/{}", item.name))
+                            .await?
+                    }
+                    FileType::Dir => {
+                        new_dirs_to_copy.push((item.path, format!("{parent_dirs}{dir_name}/")));
+                    }
+                    t => return Err(Error::CannotCopyOrMoveFileType(t)),
+                }
+            }
+        }
+
+        dirs_to_copy = new_dirs_to_copy
+    }
+
+    Ok(())
+}
+
+pub async fn move_files_with_progress<
+    S: AsRef<str>,
+    F: FnMut(TransitProgress) -> TransitProgressResponse,
+>(
+    backend: &dyn FSBackend,
+    from: &[S],
+    to: S,
+) -> Result<()> {
+    todo!()
+}
+
+pub async fn copy_files_with_progress<
+    S: AsRef<str>,
+    F: FnMut(TransitProgress) -> TransitProgressResponse,
+>(
+    backend: &dyn FSBackend,
+    from: &[S],
+    to: S,
+) -> Result<()> {
+    todo!()
+}
+
+pub async fn move_files_between<S: AsRef<str>>(
+    from_backend: &dyn FSBackend,
+    to_backend: &dyn FSBackend,
+    from: &[S],
+    to: S,
+) -> Result<()> {
+    todo!()
+}
+
+pub async fn copy_files_between<S: AsRef<str>>(
+    from_backend: &dyn FSBackend,
+    to_backend: &dyn FSBackend,
+    from: &[S],
+    to: S,
+) -> Result<()> {
+    todo!()
 }
 
 pub async fn move_files_between_with_progress<
@@ -111,15 +197,40 @@ pub async fn copy_files_between_with_progress<
     todo!()
 }
 
+async fn move_file_between(
+    from_backend: &dyn FSBackend,
+    to_backend: &dyn FSBackend,
+    from: &str,
+    to: &str,
+) -> Result<()> {
+    copy_file_between(from_backend, to_backend, from, to).await?;
+    from_backend.remove_file(from).await?;
+    Ok(())
+}
+
+async fn copy_file_between(
+    from_backend: &dyn FSBackend,
+    to_backend: &dyn FSBackend,
+    from: &str,
+    to: &str,
+) -> Result<()> {
+    let contents = from_backend.retrieve_file_content(from).await?;
+    to_backend.create_file(to, Some(&contents)).await?;
+    Ok(())
+}
+
 #[async_trait]
 pub trait FSBackend: Send + Sync {
     async fn exists(&self, path: &str) -> Result<bool>;
     async fn get_file_type(&self, path: &str) -> Result<FileType>;
     async fn retrieve_files(&self, paths: Vec<String>) -> Result<Vec<File>>;
     async fn retrieve_file_content(&self, path: &str) -> Result<Vec<u8>>;
+    async fn read_dir(&self, path: &str) -> Result<Vec<File>>;
     async fn create_file(&self, path: &str, contents: Option<&[u8]>) -> Result<()>;
     async fn create_dir(&self, path: &str) -> Result<()>;
-    async fn read_dir(&self, path: &str) -> Result<Vec<File>>;
+    async fn rename_file(&self, path: &str, new_name: &str) -> Result<()>;
+    async fn move_file(&self, from: &str, to: &str) -> Result<()>;
+    async fn copy_file(&self, from: &str, to: &str) -> Result<()>;
     async fn remove_file(&self, path: &str) -> Result<()>;
     async fn remove_dir(&self, path: &str) -> Result<()>;
     async fn trash(&self, paths: &[&str]) -> Result<()>;

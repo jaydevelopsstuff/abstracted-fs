@@ -8,6 +8,7 @@ use tokio::sync::Mutex;
 use crate::data::{File, FileType, Metadata};
 use crate::error::{Error, Result};
 use crate::unix::UnixFilePermissions;
+use crate::util::remove_lowest_path_item;
 use crate::FSBackend;
 
 pub struct FTPBackend {
@@ -57,21 +58,6 @@ impl FSBackend for FTPBackend {
         todo!()
     }
 
-    async fn create_file(&self, path: &str, contents: Option<&[u8]>) -> Result<()> {
-        self.stream
-            .lock()
-            .await
-            .put_file(path, &mut contents.unwrap_or(&[]))
-            .await?;
-
-        Ok(())
-    }
-
-    async fn create_dir(&self, path: &str) -> Result<()> {
-        self.stream.lock().await.mkdir(path).await?;
-        Ok(())
-    }
-
     async fn read_dir(&self, path: &str) -> Result<Vec<File>> {
         Ok(self
             .stream
@@ -107,6 +93,44 @@ impl FSBackend for FTPBackend {
                 }
             })
             .collect())
+    }
+
+    async fn create_file(&self, path: &str, contents: Option<&[u8]>) -> Result<()> {
+        self.stream
+            .lock()
+            .await
+            .put_file(path, &mut contents.unwrap_or(&[]))
+            .await?;
+
+        Ok(())
+    }
+
+    async fn create_dir(&self, path: &str) -> Result<()> {
+        self.stream.lock().await.mkdir(path).await?;
+        Ok(())
+    }
+
+    async fn rename_file(&self, path: &str, new_name: &str) -> Result<()> {
+        self.stream
+            .lock()
+            .await
+            .rename(
+                path,
+                &format!("{}/{new_name}", remove_lowest_path_item(path)),
+            )
+            .await?;
+        Ok(())
+    }
+
+    async fn move_file(&self, from: &str, to: &str) -> Result<()> {
+        self.stream.lock().await.rename(from, to).await?;
+        Ok(())
+    }
+
+    async fn copy_file(&self, from: &str, to: &str) -> Result<()> {
+        let contents = self.retrieve_file_content(from).await?;
+        self.create_file(to, Some(&contents)).await?;
+        Ok(())
     }
 
     async fn remove_file(&self, path: &str) -> Result<()> {

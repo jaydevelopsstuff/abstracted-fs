@@ -8,6 +8,7 @@ use tokio::fs;
 use crate::data::{File, FileType, Metadata};
 use crate::error::{Error, Result};
 use crate::unix::{UnixFilePermissionFlags, UnixFilePermissions};
+use crate::util::remove_lowest_path_item;
 use crate::FSBackend;
 
 pub struct StdBackend;
@@ -52,19 +53,6 @@ impl FSBackend for StdBackend {
         Ok(tokio::fs::read(path).await?)
     }
 
-    async fn create_file(&self, path: &str, contents: Option<&[u8]>) -> Result<()> {
-        tokio::fs::File::create_new(path).await?;
-        if let Some(contents) = contents {
-            tokio::fs::write(path, contents).await?;
-        }
-        Ok(())
-    }
-
-    async fn create_dir(&self, path: &str) -> Result<()> {
-        tokio::fs::create_dir(path).await?;
-        Ok(())
-    }
-
     async fn read_dir(&self, path: &str) -> Result<Vec<File>> {
         let mut files = vec![];
         let mut result = fs::read_dir(path).await?;
@@ -87,6 +75,38 @@ impl FSBackend for StdBackend {
         }
 
         Ok(files)
+    }
+
+    async fn create_file(&self, path: &str, contents: Option<&[u8]>) -> Result<()> {
+        tokio::fs::File::create_new(path).await?;
+        if let Some(contents) = contents {
+            tokio::fs::write(path, contents).await?;
+        }
+        Ok(())
+    }
+
+    async fn create_dir(&self, path: &str) -> Result<()> {
+        tokio::fs::create_dir(path).await?;
+        Ok(())
+    }
+
+    async fn rename_file(&self, path: &str, new_name: &str) -> Result<()> {
+        tokio::fs::rename(
+            path,
+            format!("{}/{new_name}", remove_lowest_path_item(path)),
+        )
+        .await?;
+        Ok(())
+    }
+
+    async fn move_file(&self, from: &str, to: &str) -> Result<()> {
+        tokio::fs::rename(from, to).await?;
+        Ok(())
+    }
+
+    async fn copy_file(&self, from: &str, to: &str) -> Result<()> {
+        tokio::fs::copy(from, to).await?;
+        Ok(())
     }
 
     async fn remove_file(&self, path: &str) -> Result<()> {
