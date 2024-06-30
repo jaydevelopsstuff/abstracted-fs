@@ -1,3 +1,5 @@
+use std::future::Future;
+
 use crate::{
     data::{File, FileType},
     error::{Error, Result},
@@ -258,9 +260,9 @@ pub enum TransitProgressResponse {
     Abort,
 }
 
-fn update_and_notify_progress_handler<F: Fn(&TransitProgress) -> TransitProgressResponse>(
+async fn update_and_notify_progress_handler<Fut: Future<Output = TransitProgressResponse>>(
     progress: &mut TransitProgress,
-    progress_handler: &F,
+    progress_handler: impl Fn(&TransitProgress) -> Fut,
     error: Option<Error>,
     current_file_type: FileType,
     current_file_path: String,
@@ -282,7 +284,7 @@ fn update_and_notify_progress_handler<F: Fn(&TransitProgress) -> TransitProgress
     };
     progress.processed_bytes += current_file_size.unwrap_or(0);
 
-    progress_handler(progress)
+    progress_handler(progress).await
 }
 
 macro_rules! resolve_progress_handler_response {
@@ -304,12 +306,12 @@ macro_rules! resolve_progress_handler_response {
 
 pub async fn move_files_with_progress<
     S: AsRef<str>,
-    F: Fn(&TransitProgress) -> TransitProgressResponse,
+    Fut: Future<Output = TransitProgressResponse>,
 >(
     backend: &dyn FSBackend,
     from: &[S],
     to: S,
-    progress_handler: F,
+    progress_handler: impl Fn(&TransitProgress) -> Fut,
 ) -> Result<()> {
     let to = to.as_ref();
 
@@ -348,7 +350,8 @@ pub async fn move_files_with_progress<
                     file.path.clone(),
                     file_dest.clone(),
                     file.metadata.size,
-                );
+                )
+                .await;
 
                 resolve_progress_handler_response!(
                     response,
@@ -390,7 +393,8 @@ pub async fn move_files_with_progress<
                             file.path.clone(),
                             file_dest.clone(),
                             file.metadata.size,
-                        );
+                        )
+                        .await;
 
                         resolve_progress_handler_response!(
                             response,
@@ -420,12 +424,12 @@ pub async fn move_files_with_progress<
 
 pub async fn copy_files_with_progress<
     S: AsRef<str>,
-    F: Fn(&TransitProgress) -> TransitProgressResponse,
+    Fut: Future<Output = TransitProgressResponse>,
 >(
     backend: &dyn FSBackend,
     from: &[S],
     to: S,
-    progress_handler: F,
+    progress_handler: impl Fn(&TransitProgress) -> Fut,
 ) -> Result<()> {
     let to = to.as_ref();
 
@@ -464,7 +468,8 @@ pub async fn copy_files_with_progress<
                     file.path.clone(),
                     file_dest.clone(),
                     file.metadata.size,
-                );
+                )
+                .await;
 
                 resolve_progress_handler_response!(
                     response,
@@ -505,7 +510,8 @@ pub async fn copy_files_with_progress<
                             file.path.clone(),
                             file_dest.clone(),
                             file.metadata.size,
-                        );
+                        )
+                        .await;
 
                         resolve_progress_handler_response!(
                             response,
@@ -688,13 +694,13 @@ pub async fn copy_files_between<S: AsRef<str>>(
 
 pub async fn move_files_between_with_progress<
     S: AsRef<str>,
-    F: Fn(&TransitProgress) -> TransitProgressResponse,
+    Fut: Future<Output = TransitProgressResponse>,
 >(
     from_backend: &dyn FSBackend,
     to_backend: &dyn FSBackend,
     from: &[S],
     to: S,
-    progress_handler: F,
+    progress_handler: impl Fn(&TransitProgress) -> Fut,
 ) -> Result<()> {
     let to = to.as_ref();
 
@@ -735,7 +741,8 @@ pub async fn move_files_between_with_progress<
                     file.path.clone(),
                     file_dest.clone(),
                     file.metadata.size,
-                );
+                )
+                .await;
 
                 resolve_progress_handler_response!(
                     response,
@@ -784,7 +791,8 @@ pub async fn move_files_between_with_progress<
                             file.path.clone(),
                             file_dest.clone(),
                             file.metadata.size,
-                        );
+                        )
+                        .await;
 
                         resolve_progress_handler_response!(
                             response,
@@ -820,13 +828,13 @@ pub async fn move_files_between_with_progress<
 
 pub async fn copy_files_between_with_progress<
     S: AsRef<str>,
-    F: Fn(&TransitProgress) -> TransitProgressResponse,
+    Fut: Future<Output = TransitProgressResponse>,
 >(
     from_backend: &dyn FSBackend,
     to_backend: &dyn FSBackend,
     from: &[S],
     to: S,
-    progress_handler: F,
+    progress_handler: impl Fn(&TransitProgress) -> Fut,
 ) -> Result<()> {
     let to = to.as_ref();
 
@@ -867,7 +875,8 @@ pub async fn copy_files_between_with_progress<
                     file.path.clone(),
                     file_dest.clone(),
                     file.metadata.size,
-                );
+                )
+                .await;
 
                 resolve_progress_handler_response!(
                     response,
@@ -908,7 +917,8 @@ pub async fn copy_files_between_with_progress<
                             file.path.clone(),
                             file_dest.clone(),
                             file.metadata.size,
-                        );
+                        )
+                        .await;
 
                         resolve_progress_handler_response!(
                             response,
