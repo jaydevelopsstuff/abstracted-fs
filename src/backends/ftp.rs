@@ -71,7 +71,7 @@ impl FSBackend for FTPBackend {
                 let path = format!("{path}/{}", file.name());
                 let extension = Path::new(&path)
                     .extension()
-                    .and_then(|os_str| os_str.to_str().and_then(|str| Some(str.to_string())));
+                    .and_then(|os_str| os_str.to_str().and_then(|str| Some(str.to_lowercase())));
 
                 File {
                     path,

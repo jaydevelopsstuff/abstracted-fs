@@ -40,7 +40,7 @@ impl FSBackend for StdBackend {
                     .to_string(),
                 extension: std_path
                     .extension()
-                    .and_then(|os_str| Some(os_str.to_str().unwrap().to_string())), // Input paths are already Unicode
+                    .and_then(|os_str| Some(os_str.to_str().unwrap().to_lowercase())), // Input paths are already Unicode
                 metadata: tokio::fs::metadata(path).await?.into(),
             });
         }
@@ -68,7 +68,7 @@ impl FSBackend for StdBackend {
                 extension: entry
                     .path()
                     .extension()
-                    .and_then(|os_str| os_str.to_str().and_then(|str| Some(str.to_string()))),
+                    .and_then(|os_str| os_str.to_str().and_then(|str| Some(str.to_lowercase()))),
                 metadata: entry.metadata().await?.into(),
             });
         }

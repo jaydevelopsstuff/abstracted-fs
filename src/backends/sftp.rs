@@ -57,7 +57,7 @@ impl FSBackend for SFTPBackend {
                     .to_string(),
                 extension: path_std
                     .extension()
-                    .and_then(|os_str| Some(os_str.to_str().unwrap().to_string())), // Input paths are already Unicode
+                    .and_then(|os_str| Some(os_str.to_str().unwrap().to_lowercase())), // Input paths are already Unicode
                 metadata: self.session.metadata(path).await?.into(),
             })
         }
@@ -78,7 +78,7 @@ impl FSBackend for SFTPBackend {
                 let path = format!("{path}/{}", file.file_name());
                 let extension = Path::new(&path)
                     .extension()
-                    .and_then(|os_str| os_str.to_str().and_then(|str| Some(str.to_string())));
+                    .and_then(|os_str| os_str.to_str().and_then(|str| Some(str.to_lowercase())));
 
                 File {
                     path,
