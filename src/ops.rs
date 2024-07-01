@@ -1,7 +1,9 @@
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
 use std::future::Future;
 
 use crate::{
-    data::{File, FileType},
+    data::FileType,
     error::{Error, Result},
     util::extract_lowest_path_item,
     FSBackend,
@@ -228,6 +230,7 @@ pub async fn copy_files<S: AsRef<str>>(backend: &dyn FSBackend, from: &[S], to: 
 }
 
 #[derive(Debug, Clone, Default)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct TransitProgress {
     pub processed_bytes: u64,
     pub total_bytes: u64,
@@ -245,6 +248,7 @@ pub enum TransitState {
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct TransferConflict {
     pub file_type: FileType,
     pub origin: String,
@@ -253,6 +257,7 @@ pub struct TransferConflict {
 
 // TODO: Retry
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum TransitProgressResponse {
     ContinueOrAbort,
     Skip,
