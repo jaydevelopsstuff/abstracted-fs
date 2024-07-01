@@ -231,6 +231,7 @@ pub async fn copy_files<S: AsRef<str>>(backend: &dyn FSBackend, from: &[S], to: 
 
 #[derive(Debug, Clone, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 pub struct TransitProgress {
     pub processed_bytes: u64,
     pub total_bytes: u64,
@@ -249,6 +250,7 @@ pub enum TransitState {
 
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 pub struct TransferConflict {
     pub file_type: FileType,
     pub origin: String,
