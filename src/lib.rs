@@ -2,12 +2,10 @@ pub mod backends;
 pub mod data;
 pub mod error;
 pub mod ops;
-pub mod unix;
 mod util;
 
 use async_trait::async_trait;
 use data::{File, FileType};
-use unix::UnixFilePermissions;
 
 use crate::error::Result;
 
@@ -27,11 +25,7 @@ pub trait FSBackend: Send + Sync {
     async fn remove_file(&self, path: &str) -> Result<()>;
     async fn remove_dir(&self, path: &str) -> Result<()>;
     async fn trash(&self, paths: &[&str]) -> Result<()>;
-    async fn set_file_permissions_unix(
-        &self,
-        path: &str,
-        permissions: UnixFilePermissions,
-    ) -> Result<()>;
+    async fn set_file_permissions_unix(&self, path: &str, mode: u32) -> Result<()>;
 }
 
 #[cfg(test)]

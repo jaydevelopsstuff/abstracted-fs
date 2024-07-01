@@ -7,7 +7,6 @@ use tokio::io::AsyncWriteExt;
 
 use crate::data::{File, FileType, Metadata};
 use crate::error::{Error, Result};
-use crate::unix::UnixFilePermissions;
 use crate::util::remove_lowest_path_item;
 use crate::FSBackend;
 
@@ -158,16 +157,12 @@ impl FSBackend for SFTPBackend {
         return Err(Error::Unsupported("trash".into(), "SFTP".into()));
     }
 
-    async fn set_file_permissions_unix(
-        &self,
-        path: &str,
-        permissions: UnixFilePermissions,
-    ) -> Result<()> {
+    async fn set_file_permissions_unix(&self, path: &str, mode: u32) -> Result<()> {
         self.session
             .set_metadata(
                 path,
                 russh_sftp::protocol::FileAttributes {
-                    permissions: Some(permissions.into()),
+                    permissions: Some(mode),
                     ..Default::default()
                 },
             )
@@ -185,7 +180,7 @@ impl From<SFTPMetadata> for Metadata {
             created: None,
             size: sftp_metadata.size,
             readonly: false, // FIXME: Assumption
-            unix_permissions: sftp_metadata
+            unix_mode: sftp_metadata
                 .permissions
                 .and_then(|permission_bits| Some(permission_bits.into())),
         }

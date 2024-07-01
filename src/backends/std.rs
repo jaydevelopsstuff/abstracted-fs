@@ -6,7 +6,6 @@ use tokio::fs;
 
 use crate::data::{File, FileType, Metadata};
 use crate::error::{Error, Result};
-use crate::unix::UnixFilePermissions;
 use crate::util::remove_lowest_path_item;
 use crate::FSBackend;
 
@@ -141,16 +140,11 @@ impl FSBackend for StdBackend {
         Ok(())
     }
 
-    async fn set_file_permissions_unix(
-        &self,
-        path: &str,
-        permissions: UnixFilePermissions,
-    ) -> Result<()> {
+    async fn set_file_permissions_unix(&self, path: &str, mode: u32) -> Result<()> {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(permissions.into()))
-                .await?;
+            tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(mode)).await?;
             Ok(())
         }
 
@@ -184,7 +178,7 @@ impl From<StdMetadata> for Metadata {
             accessed: std_metadata.accessed().ok(),
             created: std_metadata.created().ok(),
             readonly: std_metadata.permissions().readonly(),
-            unix_permissions: if cfg!(unix) {
+            unix_mode: if cfg!(unix) {
                 Some(std_metadata.mode().into())
             } else {
                 None

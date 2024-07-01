@@ -1,8 +1,7 @@
+use file_mode::Mode;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
-
-use crate::unix::UnixFilePermissions;
 
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -24,7 +23,7 @@ pub struct Metadata {
     pub created: Option<SystemTime>,
     pub size: Option<u64>,
     pub readonly: bool,
-    pub unix_permissions: Option<UnixFilePermissions>,
+    pub unix_mode: Option<Mode>,
 }
 
 #[non_exhaustive]

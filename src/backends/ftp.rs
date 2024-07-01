@@ -7,7 +7,6 @@ use tokio::sync::Mutex;
 
 use crate::data::{File, FileType, Metadata};
 use crate::error::{Error, Result};
-use crate::unix::UnixFilePermissions;
 use crate::util::remove_lowest_path_item;
 use crate::FSBackend;
 
@@ -88,7 +87,7 @@ impl FSBackend for FTPBackend {
                         created: None,
                         size: Some(file.size() as u64),
                         readonly: false, // FIXME: Assumption
-                        unix_permissions: None,
+                        unix_mode: None,
                     },
                 }
             })
@@ -159,11 +158,7 @@ impl FSBackend for FTPBackend {
         Err(Error::Unsupported("trash".into(), "FTP".into()))
     }
 
-    async fn set_file_permissions_unix(
-        &self,
-        _path: &str,
-        _permissions: UnixFilePermissions,
-    ) -> Result<()> {
+    async fn set_file_permissions_unix(&self, _path: &str, _mode: u32) -> Result<()> {
         Err(Error::Unsupported(
             "set_file_permissions_unix".into(),
             "FTP".into(),

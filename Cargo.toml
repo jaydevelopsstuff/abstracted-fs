@@ -12,6 +12,7 @@ russh-sftp = "2.0.1"
 trash = "5.0.0"
 async-trait = "0.1.80"
 bitflags = "2.6.0"
+file-mode = "0.1.2"
 
 [features]
-serde = ["dep:serde"]
+serde = ["dep:serde", "file-mode/serde"]
