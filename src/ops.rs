@@ -63,30 +63,30 @@ pub async fn remove_all<S: AsRef<str>>(backend: &dyn FSBackend, paths: &[S]) -> 
         }
     }
 
+    let mut dirs_to_remove = vec![];
+
     while !dirs_to_process.is_empty() {
         let mut new_dirs_to_process = vec![];
 
         for dir in dirs_to_process {
             let results = backend.read_dir(&dir).await?;
-            let results_len = results.len();
 
-            let mut files_removed = 0;
             for file in results {
                 if file.metadata.r#type == FileType::Dir {
                     new_dirs_to_process.push(file.path);
                 } else {
                     backend.remove_file(&file.path).await?;
-                    files_removed += 1;
                 }
             }
 
-            // If this directory has been emptied (or was empty to begin with), then delete it
-            if files_removed == results_len {
-                backend.remove_dir(&dir).await?;
-            }
+            dirs_to_remove.push(dir);
         }
 
         dirs_to_process = new_dirs_to_process;
+    }
+
+    while let Some(dir) = dirs_to_remove.pop() {
+        backend.remove_dir(&dir).await?;
     }
 
     Ok(())
