@@ -10,22 +10,24 @@ use crate::error::{Error, Result};
 use crate::util::remove_lowest_path_item;
 use crate::FSBackend;
 
+pub type FTPBackendStream = AsyncNativeTlsFtpStream;
+
 pub struct FTPBackend {
-    pub stream: Mutex<AsyncNativeTlsFtpStream>,
+    pub stream: Mutex<FTPBackendStream>,
 }
 
 impl FTPBackend {
-    pub fn new(stream: AsyncNativeTlsFtpStream) -> Self {
+    pub fn new(stream: FTPBackendStream) -> Self {
         Self {
             stream: Mutex::new(stream),
         }
     }
 
-    pub fn inner(&mut self) -> &mut AsyncNativeTlsFtpStream {
+    pub fn inner(&mut self) -> &mut FTPBackendStream {
         self.stream.get_mut()
     }
 
-    pub fn unwrap(self) -> AsyncNativeTlsFtpStream {
+    pub fn unwrap(self) -> FTPBackendStream {
         self.stream.into_inner()
     }
 }
