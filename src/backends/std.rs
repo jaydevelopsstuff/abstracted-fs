@@ -13,6 +13,10 @@ pub struct StdBackend;
 
 #[async_trait]
 impl FSBackend for StdBackend {
+    async fn disconnect(&self) -> Result<()> {
+        // NOOP
+        Ok(())
+    }
     async fn exists(&self, path: &str) -> Result<bool> {
         Ok(Path::new(path).exists())
     }

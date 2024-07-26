@@ -34,6 +34,10 @@ impl FTPBackend {
 
 #[async_trait]
 impl FSBackend for FTPBackend {
+    async fn disconnect(&self) -> Result<()> {
+        self.stream.lock().await.quit().await?;
+        Ok(())
+    }
     async fn exists(&self, path: &str) -> Result<bool> {
         todo!()
     }

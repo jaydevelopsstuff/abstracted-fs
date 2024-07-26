@@ -11,6 +11,7 @@ use crate::error::Result;
 
 #[async_trait]
 pub trait FSBackend: Send + Sync {
+    async fn disconnect(&self) -> Result<()>;
     async fn exists(&self, path: &str) -> Result<bool>;
     async fn get_file_type(&self, path: &str) -> Result<FileType>;
     async fn retrieve_files(&self, paths: Vec<String>) -> Result<Vec<File>>;

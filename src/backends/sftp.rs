@@ -30,6 +30,10 @@ impl SFTPBackend {
 
 #[async_trait]
 impl FSBackend for SFTPBackend {
+    async fn disconnect(&self) -> Result<()> {
+        self.session.close().await?;
+        Ok(())
+    }
     async fn exists(&self, path: &str) -> Result<bool> {
         Ok(self.session.try_exists(path).await?)
     }
