@@ -60,14 +60,14 @@ pub trait FSBackend: Send + Sync {
         Ok(total_size)
     }
 
-    async fn remove_all(&self, paths: &[String]) -> Result<()> {
+    async fn remove_all(&self, paths: &[&str]) -> Result<()> {
         let mut dirs_to_process = vec![];
 
         for path in paths {
-            if self.get_file_type(path.as_ref()).await? == FileType::Dir {
-                dirs_to_process.push(path.clone());
+            if self.get_file_type(path).await? == FileType::Dir {
+                dirs_to_process.push(path.to_string());
             } else {
-                self.remove_file(path.as_ref()).await?;
+                self.remove_file(path).await?;
             }
         }
 
