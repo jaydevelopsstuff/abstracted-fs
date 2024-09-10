@@ -27,14 +27,14 @@ impl FSBackend for StdBackend {
         ))
     }
 
-    async fn retrieve_files(&self, paths: Vec<String>) -> Result<Vec<File>> {
+    async fn retrieve_files(&self, paths: &[&str]) -> Result<Vec<File>> {
         let mut files = vec![];
 
         for path in paths {
             let std_path = Path::new(&path);
 
             files.push(File {
-                path: path.clone(),
+                path: path.to_string(),
                 name: std_path
                     .file_name()
                     .ok_or(Error::NoFileName)?

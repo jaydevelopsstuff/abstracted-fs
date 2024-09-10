@@ -9,89 +9,6 @@ use crate::{
     FSBackend,
 };
 
-pub async fn calculate_total_size<S: AsRef<str>>(
-    backend: &dyn FSBackend,
-    paths: &[S],
-) -> Result<u64> {
-    let mut total_size = 0;
-
-    let mut dirs_to_process = vec![];
-
-    for file in backend
-        .retrieve_files(
-            paths
-                .into_iter()
-                .map(|path| path.as_ref().to_string())
-                .collect(),
-        )
-        .await?
-    {
-        if file.metadata.r#type == FileType::Dir {
-            dirs_to_process.push(file.path);
-        } else {
-            total_size += file.metadata.size.unwrap_or(0);
-        }
-    }
-
-    while !dirs_to_process.is_empty() {
-        let mut new_dirs_to_process = vec![];
-
-        for dir in dirs_to_process {
-            for file in backend.read_dir(&dir).await? {
-                if file.metadata.r#type == FileType::Dir {
-                    new_dirs_to_process.push(file.path);
-                } else {
-                    total_size += file.metadata.size.unwrap_or(0);
-                }
-            }
-        }
-
-        dirs_to_process = new_dirs_to_process;
-    }
-
-    Ok(total_size)
-}
-
-pub async fn remove_all<S: AsRef<str>>(backend: &dyn FSBackend, paths: &[S]) -> Result<()> {
-    let mut dirs_to_process = vec![];
-
-    for path in paths {
-        if backend.get_file_type(path.as_ref()).await? == FileType::Dir {
-            dirs_to_process.push(path.as_ref().to_string());
-        } else {
-            backend.remove_file(path.as_ref()).await?;
-        }
-    }
-
-    let mut dirs_to_remove = vec![];
-
-    while !dirs_to_process.is_empty() {
-        let mut new_dirs_to_process = vec![];
-
-        for dir in dirs_to_process {
-            let results = backend.read_dir(&dir).await?;
-
-            for file in results {
-                if file.metadata.r#type == FileType::Dir {
-                    new_dirs_to_process.push(file.path);
-                } else {
-                    backend.remove_file(&file.path).await?;
-                }
-            }
-
-            dirs_to_remove.push(dir);
-        }
-
-        dirs_to_process = new_dirs_to_process;
-    }
-
-    while let Some(dir) = dirs_to_remove.pop() {
-        backend.remove_dir(&dir).await?;
-    }
-
-    Ok(())
-}
-
 pub async fn move_files<S: AsRef<str>>(backend: &dyn FSBackend, from: &[S], to: S) -> Result<()> {
     let to = to.as_ref();
 
@@ -318,6 +235,7 @@ pub async fn move_files_with_progress<
     to: S,
     progress_handler: impl Fn(TransitProgress) -> Fut,
 ) -> Result<()> {
+    let from: Vec<&str> = from.into_iter().map(|path| path.as_ref()).collect();
     let to = to.as_ref();
 
     if !backend.exists(to).await? {
@@ -325,7 +243,7 @@ pub async fn move_files_with_progress<
     }
 
     let mut progress = TransitProgress {
-        total_bytes: calculate_total_size(backend, from).await?,
+        total_bytes: backend.calculate_total_size(&from[..]).await?,
         ..Default::default()
     };
 
@@ -334,14 +252,7 @@ pub async fn move_files_with_progress<
     // directory in the from path.
     let mut dirs_to_duplicate: Vec<(String, String)> = vec![];
 
-    for file in backend
-        .retrieve_files(
-            from.into_iter()
-                .map(|path| path.as_ref().to_string())
-                .collect(),
-        )
-        .await?
-    {
+    for file in backend.retrieve_files(&from[..]).await? {
         match file.metadata.r#type {
             FileType::File | FileType::Symlink => {
                 let file_dest = format!("{to}/{}", extract_lowest_path_item(&file.path));
@@ -436,6 +347,7 @@ pub async fn copy_files_with_progress<
     to: S,
     progress_handler: impl Fn(TransitProgress) -> Fut,
 ) -> Result<()> {
+    let from: Vec<&str> = from.into_iter().map(|path| path.as_ref()).collect();
     let to = to.as_ref();
 
     if !backend.exists(to).await? {
@@ -443,7 +355,7 @@ pub async fn copy_files_with_progress<
     }
 
     let mut progress = TransitProgress {
-        total_bytes: calculate_total_size(backend, from).await?,
+        total_bytes: backend.calculate_total_size(&from[..]).await?,
         ..Default::default()
     };
 
@@ -452,14 +364,7 @@ pub async fn copy_files_with_progress<
     // directory in the from path.
     let mut dirs_to_copy: Vec<(String, String)> = vec![];
 
-    for file in backend
-        .retrieve_files(
-            from.into_iter()
-                .map(|path| path.as_ref().to_string())
-                .collect(),
-        )
-        .await?
-    {
+    for file in backend.retrieve_files(&from[..]).await? {
         match file.metadata.r#type {
             FileType::File => {
                 let file_dest = format!("{to}/{}", extract_lowest_path_item(&file.path));
@@ -707,6 +612,7 @@ pub async fn move_files_between_with_progress<
     to: S,
     progress_handler: impl Fn(TransitProgress) -> Fut,
 ) -> Result<()> {
+    let from: Vec<&str> = from.into_iter().map(|path| path.as_ref()).collect();
     let to = to.as_ref();
 
     if !to_backend.exists(to).await? {
@@ -714,7 +620,7 @@ pub async fn move_files_between_with_progress<
     }
 
     let mut progress = TransitProgress {
-        total_bytes: calculate_total_size(from_backend, from).await?,
+        total_bytes: from_backend.calculate_total_size(&from[..]).await?,
         ..Default::default()
     };
 
@@ -723,14 +629,7 @@ pub async fn move_files_between_with_progress<
     // directory in the from path.
     let mut dirs_to_duplicate: Vec<(String, String)> = vec![];
 
-    for file in from_backend
-        .retrieve_files(
-            from.into_iter()
-                .map(|path| path.as_ref().to_string())
-                .collect(),
-        )
-        .await?
-    {
+    for file in from_backend.retrieve_files(&from[..]).await? {
         match file.metadata.r#type {
             FileType::File => {
                 let file_dest = format!("{to}/{}", extract_lowest_path_item(&file.path));
@@ -841,6 +740,7 @@ pub async fn copy_files_between_with_progress<
     to: S,
     progress_handler: impl Fn(TransitProgress) -> Fut,
 ) -> Result<()> {
+    let from: Vec<&str> = from.into_iter().map(|path| path.as_ref()).collect();
     let to = to.as_ref();
 
     if !to_backend.exists(to).await? {
@@ -848,7 +748,7 @@ pub async fn copy_files_between_with_progress<
     }
 
     let mut progress = TransitProgress {
-        total_bytes: calculate_total_size(from_backend, from).await?,
+        total_bytes: from_backend.calculate_total_size(&from[..]).await?,
         ..Default::default()
     };
 
@@ -857,14 +757,7 @@ pub async fn copy_files_between_with_progress<
     // directory in the from path.
     let mut dirs_to_copy: Vec<(String, String)> = vec![];
 
-    for file in from_backend
-        .retrieve_files(
-            from.into_iter()
-                .map(|path| path.as_ref().to_string())
-                .collect(),
-        )
-        .await?
-    {
+    for file in from_backend.retrieve_files(&from[..]).await? {
         match file.metadata.r#type {
             FileType::File => {
                 let file_dest = format!("{to}/{}", extract_lowest_path_item(&file.path));

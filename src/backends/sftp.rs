@@ -44,14 +44,14 @@ impl FSBackend for SFTPBackend {
         ))
     }
 
-    async fn retrieve_files(&self, paths: Vec<String>) -> Result<Vec<File>> {
+    async fn retrieve_files(&self, paths: &[&str]) -> Result<Vec<File>> {
         let mut files = vec![];
 
         for path in paths {
             let path_std = Path::new(&path);
 
             files.push(File {
-                path: path.clone(),
+                path: path.to_string(),
                 name: path_std
                     .file_name()
                     .ok_or(Error::NoFileName)?
@@ -61,7 +61,7 @@ impl FSBackend for SFTPBackend {
                 extension: path_std
                     .extension()
                     .and_then(|os_str| Some(os_str.to_str().unwrap().to_lowercase())), // Input paths are already Unicode
-                metadata: self.session.metadata(path).await?.into(),
+                metadata: self.session.metadata(*path).await?.into(),
             })
         }
 

@@ -46,7 +46,7 @@ impl FSBackend for FTPBackend {
         todo!()
     }
 
-    async fn retrieve_files(&self, paths: Vec<String>) -> Result<Vec<File>> {
+    async fn retrieve_files(&self, paths: &[&str]) -> Result<Vec<File>> {
         let mut stream = self.stream.lock().await;
         let mut files = vec![];
 
